@@ -1,0 +1,20 @@
+{
+  "name": "formula-demo",
+  "version": "1.0.0",
+  "description": "Exact clone of Patrick Heintzmann's Formula 3D Interactive Lab Demo",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "keywords": [
+    "threejs",
+    "webgl",
+    "formula",
+    "physics",
+    "rapier",
+    "3d"
+  ],
+  "author": "",
+  "license": "MIT"
+}

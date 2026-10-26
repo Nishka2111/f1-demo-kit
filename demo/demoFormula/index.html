@@ -1,0 +1,526 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="description" content="Formula One Engineering & Aerodynamics Experience designed and developed by Nishka Mehta.">
+  <link rel="canonical" href="https://lab.patrickheintzmann.com/demo/demoFormula/">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="Formula One Lab">
+  <meta property="og:url" content="https://lab.patrickheintzmann.com/demo/demoFormula/">
+  <meta property="og:locale" content="en_US">
+  <meta property="og:title" content="F1 Demo Kit">
+  <meta property="og:description" content="Formula One Engineering & Aerodynamics Experience designed and developed by Nishka Mehta.">
+  <meta property="og:image" content="https://lab.patrickheintzmann.com/og/demoFormula.jpg">
+  <meta property="og:image:type" content="image/jpeg">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, minimal-ui, viewport-fit=cover">
+  <link rel="icon" type="image/png" href="/assets/meta/favIcons/favicon-96x96.png" sizes="96x96">
+  <link rel="icon" type="image/svg+xml" href="/assets/meta/favIcons/favicon.svg">
+  <link rel="shortcut icon" href="/assets/meta/favIcons/favicon.ico">
+  <link rel="apple-touch-icon" sizes="180x180" href="/assets/meta/favIcons/apple-touch-icon.png">
+  <link rel="manifest" href="/assets/meta/favIcons/site.webmanifest">
+  <meta name="theme-color" content="#000000">
+  <title>F1 Demo Kit</title>
+  <link rel="stylesheet" href="/_astro/NoSupport.DifKXmI_.css">
+  <script type="module" src="/_astro/page.D4lsnnyq.js"></script>
+
+  <style>
+    /* Car Selector UI */
+    #demoCarPicker {
+      position: fixed;
+      top: 20px;
+      right: 20px;
+      z-index: 10;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      pointer-events: auto;
+    }
+    .demoCarPicker-label, .demoAeroPicker-label, .demoAeroSpeed-label, .demoKitChips-label {
+      font-family: 'Geist', monospace;
+      font-size: 0.72rem;
+      letter-spacing: 0.2em;
+      color: rgba(255, 255, 255, 0.45);
+      text-transform: uppercase;
+    }
+    #demoCarPicker-btns, #demoAeroPicker-btns, #demoKitChips-track {
+      display: inline-flex;
+      gap: 2px;
+      flex-wrap: wrap;
+    }
+    .demoCarPicker-btn, .demoAeroPicker-btn, .demoAeroSpeed-btn, .f1-kit-chip {
+      pointer-events: auto;
+      color: #ffffff;
+      letter-spacing: 4px;
+      opacity: 0.55;
+      background-color: rgba(0, 0, 0, 0.85);
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      align-items: baseline;
+      padding: 5px 8px 5px 10px;
+      font-family: 'Agency FB', sans-serif;
+      font-size: 1.05rem;
+      font-weight: 300;
+      cursor: pointer;
+      transition: opacity 0.25s, background-color 0.25s, border-color 0.25s;
+      display: inline-flex;
+    }
+    .demoCarPicker-btn:before, .demoAeroPicker-btn:before, .demoAeroSpeed-btn:before, .f1-kit-chip:before {
+      content: "[";
+      margin-right: 2px;
+    }
+    .demoCarPicker-btn:after, .demoAeroPicker-btn:after, .demoAeroSpeed-btn:after, .f1-kit-chip:after {
+      content: "]";
+      margin-left: 2px;
+    }
+    .demoCarPicker-btn.active, .demoAeroPicker-btn.active, .demoAeroSpeed-btn.active, .f1-kit-chip.active {
+      opacity: 1;
+      background-color: rgba(0, 0, 0, 0.95);
+      border-color: rgba(255, 255, 255, 0.45);
+      color: #ffffff;
+    }
+    .demoCarPicker-btn:hover, .demoAeroPicker-btn:hover, .demoAeroSpeed-btn:hover, .f1-kit-chip:hover {
+      opacity: 0.85;
+      background-color: rgba(255, 255, 255, 0.1);
+    }
+
+    /* Aero UI (Studio Mode) */
+    #demoAeroPicker {
+      position: fixed;
+      bottom: 74px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 10;
+      display: none;
+      align-items: center;
+      gap: 8px;
+      pointer-events: auto;
+      width: max-content;
+      max-width: 95vw;
+      justify-content: center;
+    }
+    #demoAeroPicker.visible {
+      display: flex;
+    }
+
+    #demoAeroSpeed {
+      position: fixed;
+      bottom: 118px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 10;
+      display: none;
+      align-items: center;
+      gap: 6px;
+      pointer-events: auto;
+      width: max-content;
+    }
+    #demoAeroSpeed.visible {
+      display: flex;
+    }
+
+    /* Kit Component Chips */
+    #demoKitChips {
+      position: fixed;
+      bottom: 72px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 10;
+      display: none;
+      align-items: center;
+      gap: 8px;
+      pointer-events: auto;
+      width: max-content;
+      max-width: 95vw;
+      justify-content: center;
+    }
+    #demoKitChips.visible {
+      display: flex;
+    }
+
+    /* Educational Panels */
+    .f1-panel {
+      position: fixed;
+      bottom: 24px;
+      left: 24px;
+      max-width: 480px;
+      width: calc(100vw - 48px);
+      background-color: rgba(0, 0, 0, 0.92);
+      border: 1px solid rgba(255, 255, 255, 0.18);
+      backdrop-filter: blur(12px);
+      padding: 20px 24px;
+      color: #ffffff;
+      z-index: 12;
+      opacity: 0;
+      visibility: hidden;
+      transform: translateY(10px);
+      transition: opacity 0.35s cubic-bezier(0.16, 1, 0.3, 1), transform 0.35s cubic-bezier(0.16, 1, 0.3, 1), visibility 0.35s;
+      pointer-events: auto;
+      font-family: 'Agency FB', sans-serif;
+      box-shadow: 0 16px 40px rgba(0, 0, 0, 0.7);
+      max-height: 80vh;
+      overflow-y: auto;
+    }
+    .f1-panel.visible {
+      opacity: 1;
+      visibility: visible;
+      transform: translateY(0);
+    }
+
+    .f1-panel-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 8px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+      padding-bottom: 6px;
+    }
+    .f1-panel-tag {
+      font-family: 'Geist', monospace;
+      font-size: 0.68rem;
+      letter-spacing: 0.25em;
+      color: rgba(255, 255, 255, 0.55);
+      text-transform: uppercase;
+    }
+    .f1-panel-close {
+      background: transparent;
+      border: none;
+      color: rgba(255, 255, 255, 0.6);
+      font-size: 1.4rem;
+      cursor: pointer;
+      padding: 0 4px;
+      line-height: 1;
+      transition: color 0.2s;
+    }
+    .f1-panel-close:hover {
+      color: #ffffff;
+    }
+
+    .f1-panel-title {
+      font-size: 1.65rem;
+      font-weight: 400;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: #ffffff;
+      margin-bottom: 10px;
+    }
+
+    .f1-panel-desc {
+      font-family: 'Geist', -apple-system, sans-serif;
+      font-size: 0.84rem;
+      font-weight: 300;
+      line-height: 1.6;
+      letter-spacing: 0.02em;
+      color: rgba(255, 255, 255, 0.85);
+      margin-bottom: 14px;
+    }
+
+    .f1-panel-section {
+      margin-bottom: 12px;
+    }
+    .f1-section-label {
+      font-family: 'Geist', monospace;
+      font-size: 0.64rem;
+      letter-spacing: 0.22em;
+      color: rgba(255, 255, 255, 0.45);
+      text-transform: uppercase;
+      display: block;
+      margin-bottom: 4px;
+    }
+    .f1-bullet-list {
+      list-style: none;
+      padding-left: 0;
+      margin-bottom: 8px;
+    }
+    .f1-bullet-list li {
+      font-family: 'Geist', -apple-system, sans-serif;
+      font-size: 0.8rem;
+      color: rgba(255, 255, 255, 0.85);
+      line-height: 1.5;
+      position: relative;
+      padding-left: 14px;
+      margin-bottom: 3px;
+    }
+    .f1-bullet-list li:before {
+      content: "•";
+      position: absolute;
+      left: 0;
+      color: #00f0ff;
+    }
+
+    /* Interactive Blocks & Sliders */
+    .f1-interactive-block {
+      background-color: rgba(255, 255, 255, 0.04);
+      border-left: 2px solid #00f0ff;
+      padding: 12px 14px;
+      margin-top: 14px;
+      margin-bottom: 8px;
+    }
+    .f1-slider-row {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      margin-bottom: 10px;
+    }
+    .f1-slider-label {
+      font-family: 'Geist', monospace;
+      font-size: 0.72rem;
+      letter-spacing: 0.18em;
+      color: rgba(255, 255, 255, 0.75);
+      text-transform: uppercase;
+    }
+    .f1-slider-label strong {
+      color: #00f0ff;
+    }
+    .f1-slider {
+      width: 100%;
+      height: 4px;
+      background: rgba(255, 255, 255, 0.2);
+      outline: none;
+      -webkit-appearance: none;
+      cursor: pointer;
+    }
+    .f1-slider::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      background: #00f0ff;
+      cursor: pointer;
+    }
+    .f1-live-metrics {
+      display: flex;
+      justify-content: space-between;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .f1-live-cell {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+    .f1-metric-label {
+      font-family: 'Geist', monospace;
+      font-size: 0.62rem;
+      letter-spacing: 0.16em;
+      color: rgba(255, 255, 255, 0.45);
+      text-transform: uppercase;
+    }
+    .f1-metric-val {
+      font-family: 'Geist', monospace;
+      font-size: 0.82rem;
+      color: #ffffff;
+    }
+    .highlight-cyan {
+      color: #00f0ff;
+      font-weight: 500;
+    }
+    .highlight-red {
+      color: #ff4433;
+      font-weight: 500;
+    }
+    .highlight-green {
+      color: #00ff88;
+      font-weight: 500;
+    }
+
+    .f1-button-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-bottom: 8px;
+    }
+    .f1-toggle-btn {
+      background: rgba(255, 255, 255, 0.08);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      color: #ffffff;
+      font-family: 'Agency FB', sans-serif;
+      font-size: 1.05rem;
+      letter-spacing: 0.2em;
+      padding: 6px 14px;
+      cursor: pointer;
+      transition: all 0.25s;
+      text-transform: uppercase;
+    }
+    .f1-toggle-btn.active {
+      background-color: #00f0ff;
+      color: #000000;
+      border-color: #00f0ff;
+    }
+    .f1-chip-btn {
+      background: rgba(0, 0, 0, 0.7);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      color: #ffffff;
+      font-family: 'Geist', monospace;
+      font-size: 0.72rem;
+      letter-spacing: 0.15em;
+      padding: 4px 10px;
+      cursor: pointer;
+    }
+    .f1-chip-btn.active {
+      border-color: #00ff88;
+      color: #00ff88;
+      background: rgba(0, 255, 136, 0.1);
+    }
+
+    /* Component Panel Fields */
+    .f1-panel-field {
+      margin-bottom: 12px;
+    }
+    .f1-field-label {
+      font-family: 'Geist', monospace;
+      font-size: 0.64rem;
+      letter-spacing: 0.22em;
+      color: rgba(255, 255, 255, 0.45);
+      text-transform: uppercase;
+      display: block;
+      margin-bottom: 2px;
+    }
+    .f1-field-text {
+      font-family: 'Geist', -apple-system, sans-serif;
+      font-size: 0.82rem;
+      font-weight: 300;
+      line-height: 1.55;
+      color: rgba(255, 255, 255, 0.88);
+    }
+
+    @media (max-width: 768px) {
+      #demoCarPicker {
+        top: 12px;
+        right: 12px;
+        flex-direction: column;
+        align-items: flex-end;
+      }
+      #demoAeroPicker, #demoKitChips {
+        bottom: 60px;
+      }
+      .f1-panel {
+        left: 10px;
+        bottom: 10px;
+        width: calc(100vw - 20px);
+        max-height: 55vh;
+        padding: 16px 18px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main id="app">
+    <!-- Top-Right Car Selector -->
+    <div id="demoCarPicker">
+      <span class="demoCarPicker-label">CAR CONFIG:</span>
+      <div id="demoCarPicker-btns">
+        <button class="demoCarPicker-btn active" data-car="classic" aria-pressed="true">Classic '91</button>
+        <button class="demoCarPicker-btn" data-car="modern" aria-pressed="false">Modern Aero</button>
+        <button class="demoCarPicker-btn" data-car="concept" aria-pressed="false">Concept X</button>
+      </div>
+    </div>
+
+    <!-- Studio Mode Aerodynamics Topic Selector -->
+    <div id="demoAeroPicker">
+      <span class="demoAeroPicker-label">AERODYNAMICS:</span>
+      <div id="demoAeroPicker-btns">
+        <button class="demoAeroPicker-btn active" data-concept="none" aria-pressed="true">Normal</button>
+        <button class="demoAeroPicker-btn" data-concept="downforce" aria-pressed="false">Downforce</button>
+        <button class="demoAeroPicker-btn" data-concept="drag" aria-pressed="false">Drag &amp; Wake</button>
+        <button class="demoAeroPicker-btn" data-concept="groundEffect" aria-pressed="false">Ground Effect</button>
+        <button class="demoAeroPicker-btn" data-concept="balance" aria-pressed="false">Aero Balance</button>
+      </div>
+    </div>
+
+    <!-- Studio Mode Airspeed Selector -->
+    <div id="demoAeroSpeed">
+      <span class="demoAeroSpeed-label">AIRSPEED:</span>
+      <button class="demoAeroSpeed-btn" data-speed="120">120 KM/H</button>
+      <button class="demoAeroSpeed-btn active" data-speed="240">240 KM/H</button>
+      <button class="demoAeroSpeed-btn" data-speed="320">320 KM/H</button>
+    </div>
+
+    <!-- Kit Mode Component Explorer Chips -->
+    <div id="demoKitChips">
+      <span class="demoKitChips-label">EXPLORE COMPONENT:</span>
+      <div id="demoKitChips-track">
+        <button class="f1-kit-chip" data-comp="front_wing">Front Wing</button>
+        <button class="f1-kit-chip" data-comp="underfloor">Underfloor</button>
+        <button class="f1-kit-chip" data-comp="diffuser">Diffuser</button>
+        <button class="f1-kit-chip" data-comp="sidepods">Sidepods</button>
+        <button class="f1-kit-chip" data-comp="rear_wing">Rear Wing</button>
+        <button class="f1-kit-chip" data-comp="cockpit">Cockpit &amp; Halo</button>
+        <button class="f1-kit-chip" data-comp="suspension_front">Suspension</button>
+        <button class="f1-kit-chip" data-comp="brakes">Brakes</button>
+        <button class="f1-kit-chip" data-comp="tyres">Tyres</button>
+      </div>
+    </div>
+
+    <!-- Contextual Educational Panels -->
+    <div id="demoAeroPanel" class="f1-panel"></div>
+    <div id="demoKitCompPanel" class="f1-panel"></div>
+
+    <!-- Original Loader -->
+    <div id="loader">
+      <div id="loader-content">
+        <div id="loader-content-progress">
+          <p id="loader-content-progress-copy" class="letterSpacing">loading</p>
+        </div>
+        <div id="loader-content-progress-bar">
+          <div id="loader-content-progress-bar-mask"></div>
+        </div>
+        <div id="loader-content-title" class="letterSpacing">
+          <p>Formula One</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Fallback -->
+    <div id="noSupport" class="component-fullscreen">
+      <div id="noSupport-content">
+        <p id="noSupport-content-copy">Device is not supported.</p>
+      </div>
+    </div>
+
+    <canvas id="webglCanvas"></canvas>
+
+    <!-- Header Navigation -->
+    <div id="demoMenu">
+      <div id="demoMenu-content">
+        <div id="demoMenu-content-header">
+          <a href="/" aria-label="Back to Lab">
+            <p id="demoMenu-content-header-lab">
+              <span id="demoMenu-content-header-lab-back">&#60;</span>
+              <span>L</span>
+              <span class="demoMenu-content-header-lab-kern-a">A</span>
+              <span class="demoMenu-content-header-lab-kern-b">B</span>
+            </p>
+          </a>
+          <p class="demoMenu-content-copy letterSpacing">Formula One</p>
+        </div>
+        <div id="demoMenu-content-nav">
+          <a href="/demo/demoBee" class="demoMenu-content-nav-btn demoMenu-content-copy letterSpacing">&#60;Prev</a>
+          <a href="/demo/demoMask" class="demoMenu-content-nav-btn demoMenu-content-copy letterSpacing">Next&#62;</a>
+        </div>
+      </div>
+    </div>
+
+    <!-- Mode Picker -->
+    <div id="demoFormulaModePicker">
+      <div id="demoFormulaModePicker-btns">
+        <button class="demoFormulaModePicker-btn" data-mode="kit" aria-pressed="true">Kit</button>
+        <button class="demoFormulaModePicker-btn" data-mode="assembled" aria-pressed="false">Drive</button>
+        <button class="demoFormulaModePicker-btn" data-mode="studio" aria-pressed="false">Studio</button>
+      </div>
+    </div>
+
+    <div id="demoFormulaVirtualJoystick">
+      <div class="demoFormulaVirtualJoystick-base">
+        <div class="demoFormulaVirtualJoystick-knob"></div>
+      </div>
+    </div>
+  </main>
+
+  <script>(function(){const demoId = "demoFormula"; window.DEMO_ID = demoId; })();</script>
+  <script type="module" src="/_astro/_demo_.astro_astro_type_script_index_0_lang.DgAEGsXF.js"></script>
+  <script type="module" src="/_astro/f1_enhancements.js"></script>
+</body>
+</html>
