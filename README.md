@@ -22,7 +22,7 @@ You can run the demo using the included zero-dependency Node.js server:
 
 ```bash
 # In the project directory:
-node server.js
+node dev-server.js
 ```
 
 Or using npm:

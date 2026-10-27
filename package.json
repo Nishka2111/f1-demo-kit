@@ -2,10 +2,10 @@
   "name": "formula-demo",
   "version": "1.0.0",
   "description": "Exact clone of Patrick Heintzmann's Formula 3D Interactive Lab Demo",
-  "main": "server.js",
+  "private": true,
   "scripts": {
-    "start": "node server.js",
-    "dev": "node server.js"
+    "start": "node dev-server.js",
+    "dev": "node dev-server.js"
   },
   "keywords": [
     "threejs",
