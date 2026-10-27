@@ -1,8 +1,7 @@
-# Formula 3D Interactive Lab Demo
-
-Exact standalone replica of the [Patrick Heintzmann Formula Lab Demo](https://lab.patrickheintzmann.com/demo/demoFormula).
 
 # Formula One Lab — Interactive 3D Engineering Explorer
+
+https://f1-demo-kit.vercel.app/
 
 Explore the engineering behind Formula One cars through an interactive 3D experience. **Formula One Lab** combines 3D visualization with educational explanations to make complex automotive and aerodynamic concepts easier to understand.
 
