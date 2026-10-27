@@ -27,145 +27,245 @@
   <script type="module" src="/_astro/page.D4lsnnyq.js"></script>
 
   <style>
-    /* Car Selector UI */
-    #demoCarPicker {
-      position: fixed;
-      top: 20px;
-      right: 20px;
-      z-index: 10;
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      pointer-events: auto;
-    }
-    .demoCarPicker-label, .demoAeroPicker-label, .demoAeroSpeed-label, .demoKitChips-label {
-      font-family: 'Geist', monospace;
-      font-size: 0.72rem;
-      letter-spacing: 0.2em;
-      color: rgba(255, 255, 255, 0.45);
-      text-transform: uppercase;
-    }
-    #demoCarPicker-btns, #demoAeroPicker-btns, #demoKitChips-track {
-      display: inline-flex;
-      gap: 2px;
-      flex-wrap: wrap;
-    }
-    .demoCarPicker-btn, .demoAeroPicker-btn, .demoAeroSpeed-btn, .f1-kit-chip {
-      pointer-events: auto;
-      color: #ffffff;
-      letter-spacing: 4px;
-      opacity: 0.55;
-      background-color: rgba(0, 0, 0, 0.85);
-      border: 1px solid rgba(255, 255, 255, 0.14);
-      align-items: baseline;
-      padding: 5px 8px 5px 10px;
-      font-family: 'Agency FB', sans-serif;
-      font-size: 1.05rem;
-      font-weight: 300;
-      cursor: pointer;
-      transition: opacity 0.25s, background-color 0.25s, border-color 0.25s;
-      display: inline-flex;
-    }
-    .demoCarPicker-btn:before, .demoAeroPicker-btn:before, .demoAeroSpeed-btn:before, .f1-kit-chip:before {
-      content: "[";
-      margin-right: 2px;
-    }
-    .demoCarPicker-btn:after, .demoAeroPicker-btn:after, .demoAeroSpeed-btn:after, .f1-kit-chip:after {
-      content: "]";
-      margin-left: 2px;
-    }
-    .demoCarPicker-btn.active, .demoAeroPicker-btn.active, .demoAeroSpeed-btn.active, .f1-kit-chip.active {
-      opacity: 1;
-      background-color: rgba(0, 0, 0, 0.95);
-      border-color: rgba(255, 255, 255, 0.45);
-      color: #ffffff;
-    }
-    .demoCarPicker-btn:hover, .demoAeroPicker-btn:hover, .demoAeroSpeed-btn:hover, .f1-kit-chip:hover {
-      opacity: 0.85;
-      background-color: rgba(255, 255, 255, 0.1);
-    }
-
-    /* Aero UI (Studio Mode) */
-    #demoAeroPicker {
+    /* Studio Mode Single AERO Control */
+    #demoAeroControl {
       position: fixed;
       bottom: 74px;
       left: 50%;
       transform: translateX(-50%);
-      z-index: 10;
+      z-index: 20;
       display: none;
+      flex-direction: column;
       align-items: center;
-      gap: 8px;
       pointer-events: auto;
-      width: max-content;
-      max-width: 95vw;
-      justify-content: center;
     }
-    #demoAeroPicker.visible {
-      display: flex;
+    #demoAeroControl.visible {
+      display: flex !important;
     }
 
-    #demoAeroSpeed {
-      position: fixed;
-      bottom: 118px;
+    .f1-aero-pill {
+      font-family: 'Agency FB', sans-serif;
+      font-size: 1.05rem;
+      letter-spacing: 4px;
+      color: #ffffff;
+      background-color: rgba(0, 0, 0, 0.88);
+      border: 1px solid rgba(255, 255, 255, 0.18);
+      padding: 5px 14px;
+      cursor: pointer;
+      transition: all 0.25s;
+      pointer-events: auto;
+      user-select: none;
+      display: inline-flex;
+      align-items: baseline;
+    }
+    .f1-aero-pill:hover {
+      background-color: rgba(255, 255, 255, 0.12);
+      border-color: rgba(255, 255, 255, 0.4);
+    }
+    .f1-aero-pill.active {
+      background-color: rgba(0, 0, 0, 0.95);
+      border-color: rgba(0, 240, 255, 0.6);
+      color: #00f0ff;
+    }
+
+    .f1-aero-menu {
+      position: absolute;
+      bottom: calc(100% + 8px);
       left: 50%;
       transform: translateX(-50%);
-      z-index: 10;
       display: none;
-      align-items: center;
-      gap: 6px;
-      pointer-events: auto;
-      width: max-content;
+      flex-direction: column;
+      gap: 2px;
+      background: rgba(0, 0, 0, 0.94);
+      border: 1px solid rgba(255, 255, 255, 0.18);
+      padding: 6px;
+      backdrop-filter: blur(12px);
+      box-shadow: 0 12px 32px rgba(0, 0, 0, 0.8);
+      min-width: 175px;
+      z-index: 30;
     }
-    #demoAeroSpeed.visible {
+    .f1-aero-menu.open {
       display: flex;
     }
 
-    /* Kit Component Chips */
-    #demoKitChips {
+    .f1-aero-opt {
+      font-family: 'Agency FB', sans-serif;
+      font-size: 1rem;
+      letter-spacing: 3px;
+      color: rgba(255, 255, 255, 0.75);
+      background: transparent;
+      border: 1px solid transparent;
+      padding: 6px 12px;
+      text-align: left;
+      cursor: pointer;
+      transition: all 0.2s;
+      white-space: nowrap;
+    }
+    .f1-aero-opt:hover {
+      color: #ffffff;
+      background: rgba(255, 255, 255, 0.08);
+      border-color: rgba(255, 255, 255, 0.2);
+    }
+    .f1-aero-opt.active {
+      color: #00f0ff;
+      border-color: rgba(0, 240, 255, 0.4);
+      background: rgba(0, 240, 255, 0.06);
+    }
+    .f1-aero-off {
+      border-top: 1px solid rgba(255, 255, 255, 0.12) !important;
+      margin-top: 4px;
+      padding-top: 6px;
+      color: rgba(255, 255, 255, 0.4);
+      font-size: 0.9rem;
+    }
+    .f1-aero-off:hover {
+      color: #ff5544;
+    }
+
+    /* Compact Information Overlay (Studio / Drive Mode) */
+    .f1-compact-info {
       position: fixed;
-      bottom: 72px;
-      left: 50%;
-      transform: translateX(-50%);
-      z-index: 10;
-      display: none;
-      align-items: center;
-      gap: 8px;
+      bottom: 28px;
+      left: 28px;
+      max-width: 320px;
+      width: calc(100vw - 56px);
+      background-color: rgba(255, 255, 255, 0.5);
+      border: 1px solid rgba(0, 0, 0, 0.12);
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+      padding: 16px 20px;
+      color: #000000;
+      z-index: 22;
+      opacity: 0;
+      visibility: hidden;
+      transform: translateY(8px);
+      transition: opacity 0.3s cubic-bezier(0.16, 1, 0.3, 1), transform 0.3s cubic-bezier(0.16, 1, 0.3, 1), visibility 0.3s;
       pointer-events: auto;
-      width: max-content;
-      max-width: 95vw;
-      justify-content: center;
+      box-shadow: 0 16px 36px rgba(0, 0, 0, 0.22);
+      border-radius: 3px;
     }
-    #demoKitChips.visible {
+    .f1-compact-info.visible {
+      opacity: 1 !important;
+      visibility: visible !important;
+      transform: translateY(0) !important;
+    }
+    .f1-compact-header {
       display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 6px;
+      border-bottom: 1px solid rgba(0, 0, 0, 0.1);
+      padding-bottom: 4px;
+    }
+    .f1-compact-tag {
+      font-family: 'Geist', monospace;
+      font-size: 0.68rem;
+      letter-spacing: 0.25em;
+      color: rgba(0, 0, 0, 0.55);
+      text-transform: uppercase;
+      font-weight: 600;
+    }
+    .f1-compact-close {
+      background: transparent;
+      border: none;
+      color: rgba(0, 0, 0, 0.45);
+      font-size: 1.25rem;
+      cursor: pointer;
+      padding: 0;
+      line-height: 1;
+      transition: color 0.2s;
+    }
+    .f1-compact-close:hover {
+      color: #000000;
+    }
+    .f1-compact-title {
+      font-family: 'Agency FB', sans-serif;
+      font-size: 1.45rem;
+      font-weight: 700;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: #000000;
+      margin-bottom: 8px;
+    }
+    .f1-compact-desc {
+      font-family: 'Geist', -apple-system, sans-serif;
+      font-size: 0.8rem;
+      font-weight: 400;
+      line-height: 1.55;
+      color: #111111;
+      margin-bottom: 10px;
+    }
+    .f1-compact-more {
+      font-family: 'Agency FB', sans-serif;
+      font-size: 0.95rem;
+      letter-spacing: 0.2em;
+      background: rgba(0, 0, 0, 0.05);
+      border: 1px solid rgba(0, 0, 0, 0.2);
+      color: #000000;
+      padding: 3px 8px;
+      cursor: pointer;
+      transition: all 0.2s;
+      text-transform: uppercase;
+    }
+    .f1-compact-more:hover {
+      background: #000000;
+      color: #ffffff;
+      border-color: #000000;
+    }
+    .f1-compact-details {
+      margin-top: 10px;
+      padding-top: 8px;
+      border-top: 1px solid rgba(0, 0, 0, 0.1);
+    }
+    .f1-compact-section {
+      margin-bottom: 8px;
+    }
+    .f1-compact-sub {
+      font-family: 'Geist', monospace;
+      font-size: 0.62rem;
+      letter-spacing: 0.2em;
+      color: rgba(0, 0, 0, 0.55);
+      text-transform: uppercase;
+      display: block;
+      margin-bottom: 2px;
+      font-weight: 600;
+    }
+    .f1-compact-subtext {
+      font-family: 'Geist', -apple-system, sans-serif;
+      font-size: 0.76rem;
+      line-height: 1.5;
+      color: #222222;
     }
 
-    /* Educational Panels */
+    /* Component Details Pop-up (Kit Mode) */
     .f1-panel {
       position: fixed;
       bottom: 24px;
       left: 24px;
-      max-width: 480px;
+      max-width: 440px;
       width: calc(100vw - 48px);
-      background-color: rgba(0, 0, 0, 0.92);
-      border: 1px solid rgba(255, 255, 255, 0.18);
-      backdrop-filter: blur(12px);
+      background-color: rgba(255, 255, 255, 0.5);
+      border: 1px solid rgba(0, 0, 0, 0.14);
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
       padding: 20px 24px;
-      color: #ffffff;
-      z-index: 12;
+      color: #000000;
+      z-index: 25;
       opacity: 0;
       visibility: hidden;
       transform: translateY(10px);
       transition: opacity 0.35s cubic-bezier(0.16, 1, 0.3, 1), transform 0.35s cubic-bezier(0.16, 1, 0.3, 1), visibility 0.35s;
       pointer-events: auto;
       font-family: 'Agency FB', sans-serif;
-      box-shadow: 0 16px 40px rgba(0, 0, 0, 0.7);
+      box-shadow: 0 16px 40px rgba(0, 0, 0, 0.25);
       max-height: 80vh;
       overflow-y: auto;
+      border-radius: 3px;
     }
     .f1-panel.visible {
-      opacity: 1;
-      visibility: visible;
-      transform: translateY(0);
+      opacity: 1 !important;
+      visibility: visible !important;
+      transform: translateY(0) !important;
     }
 
     .f1-panel-header {
@@ -173,20 +273,21 @@
       justify-content: space-between;
       align-items: center;
       margin-bottom: 8px;
-      border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+      border-bottom: 1px solid rgba(0, 0, 0, 0.12);
       padding-bottom: 6px;
     }
     .f1-panel-tag {
       font-family: 'Geist', monospace;
       font-size: 0.68rem;
-      letter-spacing: 0.25em;
-      color: rgba(255, 255, 255, 0.55);
+      letter-spacing: 0.22em;
+      color: rgba(0, 0, 0, 0.6);
       text-transform: uppercase;
+      font-weight: 600;
     }
     .f1-panel-close {
       background: transparent;
       border: none;
-      color: rgba(255, 255, 255, 0.6);
+      color: rgba(0, 0, 0, 0.5);
       font-size: 1.4rem;
       cursor: pointer;
       padding: 0 4px;
@@ -194,67 +295,44 @@
       transition: color 0.2s;
     }
     .f1-panel-close:hover {
-      color: #ffffff;
+      color: #000000;
     }
 
     .f1-panel-title {
       font-size: 1.65rem;
-      font-weight: 400;
-      letter-spacing: 0.18em;
+      font-weight: 700;
+      letter-spacing: 0.16em;
       text-transform: uppercase;
-      color: #ffffff;
+      color: #000000;
       margin-bottom: 10px;
     }
 
-    .f1-panel-desc {
-      font-family: 'Geist', -apple-system, sans-serif;
-      font-size: 0.84rem;
-      font-weight: 300;
-      line-height: 1.6;
-      letter-spacing: 0.02em;
-      color: rgba(255, 255, 255, 0.85);
-      margin-bottom: 14px;
+    .f1-panel-field {
+      margin-bottom: 10px;
     }
-
-    .f1-panel-section {
-      margin-bottom: 12px;
-    }
-    .f1-section-label {
+    .f1-field-label {
       font-family: 'Geist', monospace;
       font-size: 0.64rem;
       letter-spacing: 0.22em;
-      color: rgba(255, 255, 255, 0.45);
+      color: rgba(0, 0, 0, 0.55);
       text-transform: uppercase;
       display: block;
-      margin-bottom: 4px;
+      margin-bottom: 2px;
+      font-weight: 600;
     }
-    .f1-bullet-list {
-      list-style: none;
-      padding-left: 0;
-      margin-bottom: 8px;
-    }
-    .f1-bullet-list li {
+    .f1-field-text {
       font-family: 'Geist', -apple-system, sans-serif;
-      font-size: 0.8rem;
-      color: rgba(255, 255, 255, 0.85);
-      line-height: 1.5;
-      position: relative;
-      padding-left: 14px;
-      margin-bottom: 3px;
-    }
-    .f1-bullet-list li:before {
-      content: "•";
-      position: absolute;
-      left: 0;
-      color: #00f0ff;
+      font-size: 0.82rem;
+      font-weight: 400;
+      line-height: 1.55;
+      color: #111111;
     }
 
-    /* Interactive Blocks & Sliders */
     .f1-interactive-block {
-      background-color: rgba(255, 255, 255, 0.04);
-      border-left: 2px solid #00f0ff;
-      padding: 12px 14px;
-      margin-top: 14px;
+      background-color: rgba(0, 0, 0, 0.05);
+      border-left: 2px solid #000000;
+      padding: 10px 12px;
+      margin-top: 10px;
       margin-bottom: 8px;
     }
     .f1-slider-row {
@@ -373,7 +451,7 @@
       font-family: 'Geist', monospace;
       font-size: 0.64rem;
       letter-spacing: 0.22em;
-      color: rgba(255, 255, 255, 0.45);
+      color: rgba(0, 0, 0, 0.7);
       text-transform: uppercase;
       display: block;
       margin-bottom: 2px;
@@ -383,18 +461,18 @@
       font-size: 0.82rem;
       font-weight: 300;
       line-height: 1.55;
-      color: rgba(255, 255, 255, 0.88);
+      color: #111111;
     }
 
     @media (max-width: 768px) {
-      #demoCarPicker {
-        top: 12px;
-        right: 12px;
-        flex-direction: column;
-        align-items: flex-end;
-      }
-      #demoAeroPicker, #demoKitChips {
+      #demoAeroControl {
         bottom: 60px;
+      }
+      .f1-compact-info {
+        left: 12px;
+        bottom: 110px;
+        width: calc(100vw - 24px);
+        max-width: calc(100vw - 24px);
       }
       .f1-panel {
         left: 10px;
@@ -408,55 +486,70 @@
 </head>
 <body>
   <main id="app">
-    <!-- Top-Right Car Selector -->
-    <div id="demoCarPicker">
-      <span class="demoCarPicker-label">CAR CONFIG:</span>
-      <div id="demoCarPicker-btns">
-        <button class="demoCarPicker-btn active" data-car="classic" aria-pressed="true">Classic '91</button>
-        <button class="demoCarPicker-btn" data-car="modern" aria-pressed="false">Modern Aero</button>
-        <button class="demoCarPicker-btn" data-car="concept" aria-pressed="false">Concept X</button>
+    <!-- Studio Mode Single Compact AERO Control -->
+    <div id="demoAeroControl">
+      <button id="demoAeroBtn" class="f1-aero-pill" aria-expanded="false">[ AERO ]</button>
+      <div id="demoAeroDropdown" class="f1-aero-menu" role="menu">
+        <button class="f1-aero-opt" data-topic="downforce">Downforce</button>
+        <button class="f1-aero-opt" data-topic="drag">Drag &amp; Wake</button>
+        <button class="f1-aero-opt" data-topic="groundEffect">Ground Effect</button>
+        <button class="f1-aero-opt" data-topic="balance">Aero Balance</button>
+        <button class="f1-aero-opt f1-aero-off" data-topic="none">[ Reset View ]</button>
       </div>
     </div>
 
-    <!-- Studio Mode Aerodynamics Topic Selector -->
-    <div id="demoAeroPicker">
-      <span class="demoAeroPicker-label">AERODYNAMICS:</span>
-      <div id="demoAeroPicker-btns">
-        <button class="demoAeroPicker-btn active" data-concept="none" aria-pressed="true">Normal</button>
-        <button class="demoAeroPicker-btn" data-concept="downforce" aria-pressed="false">Downforce</button>
-        <button class="demoAeroPicker-btn" data-concept="drag" aria-pressed="false">Drag &amp; Wake</button>
-        <button class="demoAeroPicker-btn" data-concept="groundEffect" aria-pressed="false">Ground Effect</button>
-        <button class="demoAeroPicker-btn" data-concept="balance" aria-pressed="false">Aero Balance</button>
+    <!-- Studio Mode Compact Contextual Info Overlay -->
+    <div id="demoAeroInfo" class="f1-compact-info">
+      <div class="f1-compact-header">
+        <span id="demoAeroTag" class="f1-compact-tag">AERO / 01</span>
+        <button id="closeAeroInfoBtn" class="f1-compact-close" aria-label="Dismiss aerodynamic overlay">&times;</button>
+      </div>
+      <h3 id="demoAeroTitle" class="f1-compact-title">DOWNFORCE</h3>
+      <p id="demoAeroDesc" class="f1-compact-desc">Wings and underfloor aerodynamics generate a force towards the track, increasing tyre loading and helping the car corner at higher speeds.</p>
+      <div id="demoAeroDetails" class="f1-compact-details" style="display: none;">
+        <div class="f1-compact-section">
+          <span class="f1-compact-sub">KEY PRINCIPLES</span>
+          <p id="demoAeroPrinciples" class="f1-compact-subtext">Bernoulli suction on inverted aerofoils and Newtonian downwash airflow deflection.</p>
+        </div>
+        <div class="f1-compact-section">
+          <span class="f1-compact-sub">ENGINEERING TRADE-OFF</span>
+          <p id="demoAeroTradeoff" class="f1-compact-subtext">Greater downforce raises cornering grip but increases induced drag, penalizing straight-line top speed.</p>
+        </div>
+      </div>
+      <button id="toggleAeroDetailsBtn" class="f1-compact-more">[+ MORE]</button>
+    </div>
+    <div id="demoKitCompPanel" class="f1-panel">
+      <div class="f1-panel-header">
+        <span class="f1-panel-tag">[ AERODYNAMIC DOWNFORCE &amp; WAKE CONTROL ]</span>
+        <button class="f1-panel-close" id="closeKitPanelBtn" aria-label="Close Component Reference">&times;</button>
+      </div>
+      <h3 class="f1-panel-title">FRONT WING MAINPLANE &amp; FLAPS</h3>
+
+      <div class="f1-panel-field">
+        <span class="f1-field-label">LOCATION:</span>
+        <p class="f1-field-text">At the leading edge of the vehicle, positioned forward of the front wheels and chassis nose.</p>
+      </div>
+
+      <div class="f1-panel-field">
+        <span class="f1-field-label">FUNCTION:</span>
+        <p class="f1-field-text">Manages incoming undisturbed airflow, contributes 25% to 35% of overall vehicle downforce, and conditions aerodynamic wake around the front wheels.</p>
+      </div>
+
+      <div class="f1-panel-field">
+        <span class="f1-field-label">ENGINEERING PRINCIPLE:</span>
+        <p class="f1-field-text">Multi-element inverted cambered aerofoils generating intense low pressure on the underside and high pressure above. Upper flap angles are adjustable to trim balance.</p>
+      </div>
+
+      <div class="f1-panel-field">
+        <span class="f1-field-label">PERFORMANCE IMPACT:</span>
+        <p class="f1-field-text">Directly dictates front-axle grip, high-speed corner entry stability, turn-in authority, and overall vehicle aerodynamic balance.</p>
+      </div>
+
+      <div class="f1-panel-field">
+        <span class="f1-field-label">ENGINEERING TRADE-OFF:</span>
+        <p class="f1-field-text">Increasing wing flap angle generates vital front downforce but induces parasitic profile drag and shifts the aerodynamic center of pressure forward as speed climbs.</p>
       </div>
     </div>
-
-    <!-- Studio Mode Airspeed Selector -->
-    <div id="demoAeroSpeed">
-      <span class="demoAeroSpeed-label">AIRSPEED:</span>
-      <button class="demoAeroSpeed-btn" data-speed="120">120 KM/H</button>
-      <button class="demoAeroSpeed-btn active" data-speed="240">240 KM/H</button>
-      <button class="demoAeroSpeed-btn" data-speed="320">320 KM/H</button>
-    </div>
-
-    <!-- Kit Mode Component Explorer Chips -->
-    <div id="demoKitChips">
-      <span class="demoKitChips-label">EXPLORE COMPONENT:</span>
-      <div id="demoKitChips-track">
-        <button class="f1-kit-chip" data-comp="front_wing">Front Wing</button>
-        <button class="f1-kit-chip" data-comp="underfloor">Underfloor</button>
-        <button class="f1-kit-chip" data-comp="diffuser">Diffuser</button>
-        <button class="f1-kit-chip" data-comp="sidepods">Sidepods</button>
-        <button class="f1-kit-chip" data-comp="rear_wing">Rear Wing</button>
-        <button class="f1-kit-chip" data-comp="cockpit">Cockpit &amp; Halo</button>
-        <button class="f1-kit-chip" data-comp="suspension_front">Suspension</button>
-        <button class="f1-kit-chip" data-comp="brakes">Brakes</button>
-        <button class="f1-kit-chip" data-comp="tyres">Tyres</button>
-      </div>
-    </div>
-
-    <!-- Contextual Educational Panels -->
-    <div id="demoAeroPanel" class="f1-panel"></div>
-    <div id="demoKitCompPanel" class="f1-panel"></div>
 
     <!-- Original Loader -->
     <div id="loader">
@@ -488,7 +581,6 @@
         <div id="demoMenu-content-header">
           <a href="/" aria-label="Back to Lab">
             <p id="demoMenu-content-header-lab">
-              <span id="demoMenu-content-header-lab-back">&#60;</span>
               <span>L</span>
               <span class="demoMenu-content-header-lab-kern-a">A</span>
               <span class="demoMenu-content-header-lab-kern-b">B</span>

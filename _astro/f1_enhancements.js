@@ -2,20 +2,19 @@
  * Formula One Website Enhancements (Production Architecture)
  * Designed & Developed for Nishka Mehta
  *
- * 1. Structural Car Configurations (Classic '91, Modern Ground Effect, Concept X)
- * 2. Interactive Aerodynamics Education in Studio Mode (Downforce, Drag & Wake, Ground Effect, Aero Balance)
- * 3. Clickable Component Exploration in Kit Mode (6 structured engineering fields)
- * 4. Car-Specific Educational Mapping & Dynamic Physics Controls
+ * 1. Interactive Aerodynamics Education (Downforce, Drag, Lift, Airflow, Wake)
+ * 2. Restrained, Laser-Thin Technical Wind-Tunnel Streamlines & Force Vectors
+ * 3. Single Compact [ AERO ] Control & Negative-Space Contextual Overlay
+ * 4. Clickable Component Exploration in Kit Mode (structured engineering fields)
  */
 
 (function () {
   'use strict';
 
-  // State Management
+  // Global State
   const state = {
     engine: null,
     currentMode: 'kit',
-    activeCar: 'classic',      // 'classic' | 'modern' | 'concept'
     activeAero: 'none',        // 'none' | 'downforce' | 'drag' | 'groundEffect' | 'balance'
     airspeed: 240,             // km/h
     wingAngle: 28,             // degrees (15 - 38)
@@ -24,21 +23,27 @@
     frontAeroSplit: 43,        // % (40 - 48)
     selectedComponentKey: null,
     aeroGroup: null,
-    kitHighlightGroup: null,
-    carAccessoriesGroup: null,
+    driveAeroGroup: null,
+    aeroLoop: { active: false, idx: 0, phase: 'in', t: 0 },
+    driveAeroAnim: null,
+    uiBound: false,
     pointerDownPos: { x: 0, y: 0 },
+    pointerType: 'mouse',
     isDragging: false,
+    pickAnchor: null,
+    pickCandidates: [],
+    pickIndex: 0,
     animTime: 0,
-    originalGeometries: new Map(), // mesh -> Float32Array (original positions)
     isUndersideView: false,
     cameraPrevPos: null
   };
 
   // -------------------------------------------------------------
-  // CAR-SPECIFIC COMPONENT ENGINEERING DATABASE
+  // CAR-SPECIFIC COMPONENT ENGINEERING DATABASE (KIT MODE)
   // -------------------------------------------------------------
   const COMPONENT_DB = {
     front_wing: {
+      category: 'Aerodynamic Downforce & Wake Control',
       name: 'FRONT WING MAINPLANE & FLAPS',
       matchKeys: ['front_wing_center', 'front_wing_flap_left', 'front_wing_flap_right'],
       location: 'At the leading edge of the vehicle, positioned forward of the front wheels and chassis nose.',
@@ -46,13 +51,9 @@
       principle: 'Multi-element inverted cambered aerofoils generating intense low pressure on the underside and high pressure above. Upper flap angles are adjustable to trim balance.',
       performanceImpact: 'Directly dictates front-axle grip, high-speed corner entry stability, turn-in authority, and overall vehicle aerodynamic balance.',
       tradeoff: 'Increasing wing flap angle generates vital front downforce but induces parasitic profile drag and shifts the aerodynamic center of pressure forward as speed climbs.',
-      carSpecific: {
-        classic: '1991 specification: High-mounted, flat multi-element wing with wide vertical endplates designed for clean upper airflow.',
-        modern: '2024 ground-effect specification: 3D sweeping curved aerofoil dipping low at the center to feed underfloor tunnels with inward-rolled vortex endplates.',
-        concept: 'Concept X specification: Active morphing delta aerofoil with dynamic spanwise angle-of-attack adjustment.'
-      }
     },
     front_endplates: {
+      category: 'Outwash & Vortex Management',
       name: 'FRONT WING ENDPLATES & DIVEPLANES',
       matchKeys: ['front_wing_endplate_left', 'front_wing_endplate_right'],
       location: 'Outer vertical boundaries at the transverse extremities of the front wing.',
@@ -60,13 +61,9 @@
       principle: 'Vorticity generation and pressure boundary separation; guides high-pressure air outwards around the exposed front tyres.',
       performanceImpact: 'Protects the underfloor leading edge from ingesting turbulent, low-energy tyre wake, preserving underfloor ground-effect suction.',
       tradeoff: 'Aggressive outwash generation creates induced vortex drag and increases aerodynamic sensitivity to yaw angles in crosswinds.',
-      carSpecific: {
-        classic: 'Classic planar carbon plates with simple trailing edge cutouts.',
-        modern: 'Contoured 3D curved surfaces designed under strict FIA regulations to control outwash wake angle.',
-        concept: 'Integrated vortex generators with fluidic boundary layer injection ports.'
-      }
     },
     rear_wing: {
+      category: 'Aerodynamic Downforce & Active DRS',
       name: 'REAR WING & DRS SYSTEM',
       matchKeys: ['rear_wing_main_plane', 'rear_wing_top_flap', 'rear_beam_wing'],
       location: 'High-mounted at the trailing edge of the car above the transmission and diffuser exit.',
@@ -74,13 +71,9 @@
       principle: 'Deep-camber aerofoil operating in free stream air. DRS hydraulic actuator rotates the upper flap horizontal on straights to dump induced drag.',
       performanceImpact: 'Provides driver confidence through high-speed sweeps and prevents snap oversteer during rapid trail-braking phases.',
       tradeoff: 'The largest single source of pressure drag on the car; high-downforce wing angles severely penalize straight-line top speed.',
-      carSpecific: {
-        classic: '1991 specification: Tall, rectangular high-drag wing assembly without DRS; pure mechanical downforce.',
-        modern: '2024 specification: Swooping curved upper mainplane with FIA-mandated DRS hydraulic slot actuator.',
-        concept: 'Concept X specification: Dual-tier kinetic beam wing that articulates dynamically based on telemetry.'
-      }
     },
     rear_endplates: {
+      category: 'Trailing Vortex Mitigation',
       name: 'REAR WING ENDPLATES & STRAKES',
       matchKeys: ['rear_wing_endplate_left', 'rear_wing_endplate_right'],
       location: 'Vertical side planes framing both sides of the rear wing aerofoils.',
@@ -88,13 +81,9 @@
       principle: 'Maintains spanwise pressure differentials between the suction lower surface and positive upper surface of the aerofoil.',
       performanceImpact: 'Improves rear wing efficiency by up to 15% and ensures consistent downforce across varying yaw angles.',
       tradeoff: 'Increases lateral surface area, making the vehicle more susceptible to sudden destabilizing gusts in side winds.',
-      carSpecific: {
-        classic: 'Full-length vertical carbon fins extending down to the floor edge.',
-        modern: 'Sculpted rolled endplates merging seamlessly with the wing profile to eliminate sharp vortices.',
-        concept: 'Active twin stabilizing fins with integrated brake cooling exhaust.'
-      }
     },
     diffuser: {
+      category: 'Ground Effect Underfloor Suction',
       name: 'REAR DIFFUSER & PRESSURE EXPANSION',
       matchKeys: ['diffuser_left', 'diffuser_right'],
       location: 'At the rear of the underfloor, expanding upward between the rear suspension and wheels.',
@@ -102,13 +91,9 @@
       principle: 'Bernoulli principle and Venturi expansion duct. As cross-sectional area expands, airflow decelerates and pressure increases, drawing air through the throat at hyper-speed.',
       performanceImpact: 'Produces the most aerodynamically efficient downforce on the car with the lowest drag-to-downforce penalty.',
       tradeoff: 'Extremely sensitive to ride height and pitch angle; excessive kerb bounce can cause sudden flow separation and violent aerodynamic stall.',
-      carSpecific: {
-        classic: 'Stepped kick-up diffuser typical of the early 1990s flat-bottom regulations.',
-        modern: 'Deep, contoured multi-channel diffuser tunnel with vertical vortex control fences.',
-        concept: 'Dual-stage boundary-layer extraction diffuser with active pneumatic flow energizers.'
-      }
     },
     underfloor: {
+      category: 'Venturi Tunnel Aerodynamics',
       name: 'UNDERFLOOR & VENTURI TUNNELS',
       matchKeys: ['body_bottom'],
       location: 'The entire underside of the carbon monocoque chassis between the front and rear axles.',
@@ -116,13 +101,9 @@
       principle: 'Ground proximity forces air through converging and diverging ducts, producing dramatic negative pressure beneath the car’s center of gravity.',
       performanceImpact: 'Enables massive cornering speeds with minimal trailing turbulent wake compared to over-body wings.',
       tradeoff: 'Demands an ultra-stiff mechanical suspension setup to maintain millimeter-precise ride height, compromising mechanical compliance over kerbs.',
-      carSpecific: {
-        classic: 'Flat wooden skid block and stepped floor profile, producing ~35% of total car downforce.',
-        modern: 'Full 3D curved Venturi tunnels with floor edge fences, producing ~60% of total downforce.',
-        concept: 'Adaptive variable-geometry floor channels with integrated ground-effect suction fans.'
-      }
     },
     sidepods: {
+      category: 'Thermal Packaging & Downwash Flow',
       name: 'SIDEPODS & RADIATOR INLETS',
       matchKeys: ['sidepod_left', 'sidepod_right'],
       location: 'Flanking either side of the monocoque between the front wheels and rear suspension.',
@@ -130,13 +111,9 @@
       principle: 'Aggressive undercut geometry channels clean upper airflow downwards onto the floor margin, sealing underfloor low pressure.',
       performanceImpact: 'Ensures the 1,000+ bhp hybrid power unit survives thermal limits while contributing significantly to aerodynamic downwash.',
       tradeoff: 'Radiator internal cooling drag versus external aerodynamic efficiency; tight packaging increases thermal throttling risks in hot climates.',
-      carSpecific: {
-        classic: 'Square-inlet sidepods housing large oil and water radiators for the naturally aspirated V10.',
-        modern: 'Extreme downwash sidepod undercut guiding air tightly into the rear coke-bottle zone.',
-        concept: 'Concealed micro-channel heat exchangers with zero external cooling aperture drag.'
-      }
     },
     monocoque: {
+      category: 'Composite Chassis Survival Cell',
       name: 'CARBON COMPOSITE MONOCOQUE',
       matchKeys: ['main_shell'],
       location: 'Central structural core of the vehicle housing the cockpit, fuel cell, and front suspension pick-up points.',
@@ -144,13 +121,9 @@
       principle: 'Carbon-fibre and Kevlar pre-preg skins cured under autoclave pressure around an aluminium or Nomex honeycomb core.',
       performanceImpact: 'Zero chassis deflection ensures suspension geometry remains true under 5g cornering loads; withstands extreme FIA impact crash tests.',
       tradeoff: 'Extreme manufacturing complexity and expense; absolute torsional rigidity requires meticulous vibration dampening.',
-      carSpecific: {
-        classic: 'High-pointed narrow pencil nose and exposed mechanical packaging of the 1991 era.',
-        modern: 'Longer wheelbase, low-impact absorbing nose tip, and reinforced side impact crash structures.',
-        concept: 'Continuous monocoque fuselage with integrated aerodynamic spine and active load sensors.'
-      }
     },
     cockpit: {
+      category: 'Driver Cockpit & Impact Structures',
       name: 'COCKPIT, HALO & WINDSCREEN',
       matchKeys: ['cockpit'],
       location: 'Surrounding the driver cockpit opening and helmet envelope.',
@@ -158,13 +131,9 @@
       principle: 'Tubular titanium structure with sculpted carbon aerodynamic fairings designed to deflect large debris and absorb rollover energy.',
       performanceImpact: 'Revolutionary driver safety innovation that has prevented fatal head injuries in modern open-wheel motorsport.',
       tradeoff: 'Adds ~9 kg of mass at the highest vertical point of the chassis, slightly elevating the vehicle center of gravity.',
-      carSpecific: {
-        classic: 'Open cockpit with low head protection bolsters and small Lexan windscreen; no Halo.',
-        modern: 'Mandatory FIA Grade 5 Titanium Halo structure with aerodynamic fairing vane.',
-        concept: 'High-strength polycarbonate fighter-jet canopy offering 100% aerodynamic and impact protection.'
-      }
     },
     suspension_front: {
+      category: 'Kinematics & Platform Stability',
       name: 'FRONT SUSPENSION (WISHBONES & PUSHROD)',
       matchKeys: ['suspension_front_left', 'suspension_front_right'],
       location: 'Connecting the front wheel uprights to the inboard dampers inside the nose cone.',
@@ -172,13 +141,9 @@
       principle: 'Unequal-length double wishbone layout with aerodynamic carbon shrouds; pushrod actuates inboard bellcrank and heave torsion bars.',
       performanceImpact: 'Dictates steering precision, mechanical front grip, and prevents aerodynamic underfloor pitch sensitivity.',
       tradeoff: 'Aerodynamic shroud optimization versus kinematic adjustability; ultra-stiff springs benefit downforce but hurt kerb-riding traction.',
-      carSpecific: {
-        classic: 'Exposed aerodynamic steel/carbon wishbones with external pushrod geometry.',
-        modern: 'Integrated aero-profile carbon shrouds with extreme anti-dive kinematic geometry.',
-        concept: 'Active electromagnetic pushrods with millisecond-level ride-height adaptation.'
-      }
     },
     suspension_rear: {
+      category: 'Traction Kinematics & Roll Center',
       name: 'REAR SUSPENSION (MULTI-LINK & PULLROD)',
       matchKeys: ['suspension_back_left', 'suspension_back_right'],
       location: 'Connecting the rear wheel uprights to the transmission casing and inboard dampers.',
@@ -186,13 +151,9 @@
       principle: 'Multi-link pullrod configuration lowering the vehicle center of gravity while managing dynamic wheel camber and toe curves.',
       performanceImpact: 'Critical for putting down 1,000 bhp without wheelspin and preventing rear tyre thermal degradation.',
       tradeoff: 'Extremely tight packaging inside the aerodynamic coke-bottle zone complicates trackside mechanical setup access.',
-      carSpecific: {
-        classic: 'Transverse pushrod geometry mounted over the 6-speed longitudinal gearbox.',
-        modern: 'Pullrod kinematics packaging dampers low on the floor to clear the diffuser airflow channel.',
-        concept: 'Inboard active torsion dampers with multi-stage regenerative energy recovery.'
-      }
     },
     brakes: {
+      category: 'High-Temperature Carbon Braking',
       name: 'CARBON-CARBON BRAKE ASSEMBLIES',
       matchKeys: ['brake_disc_front_left', 'brake_disc_front_right', 'brake_disc_back_left', 'brake_disc_back_right'],
       location: 'Inside each wheel hub behind the rim assembly.',
@@ -200,13 +161,9 @@
       principle: 'Carbon-fibre matrix discs and carbon pads with over 1,000 drilled radial cooling holes; operates at 350°C to 1,000°C.',
       performanceImpact: 'Late-braking performance defines overtaking opportunities and overall circuit lap time.',
       tradeoff: 'Brittle performance window: below 300°C carbon brakes offer poor friction, while above 1,000°C rapid disc oxidation occurs.',
-      carSpecific: {
-        classic: '280 mm carbon-carbon discs with 4-piston monobloc Brembo calipers.',
-        modern: '32 mm thick discs with over 1,400 cooling holes and brake-by-wire rear energy recovery.',
-        concept: 'Integrated ceramic-matrix kinetic regenerative brake discs with vacuum dust scavengers.'
-      }
     },
     tyres: {
+      category: 'Contact Patch Viscoelastic Friction',
       name: 'SLICK RACING TYRES',
       matchKeys: ['tire_front_left', 'tire_front_right', 'tire_back_left', 'tire_back_right'],
       location: 'The vehicle’s four primary contact patches with the circuit asphalt surface.',
@@ -214,13 +171,9 @@
       principle: 'Viscoelastic rubber polymers conforming into track micro-textures through molecular adhesion and hysteresis.',
       performanceImpact: 'The single most decisive performance component; all aerodynamic forces must ultimately act through these four contact patches.',
       tradeoff: 'Softer compound provides maximum grip but suffers rapid thermal blistering; harder compound lasts longer but sacrifices peak grip.',
-      carSpecific: {
-        classic: '13-inch Goodyear racing tyres with thick, flexible sidewalls providing natural mechanical compliance.',
-        modern: '18-inch low-profile Pirelli P-Zero tyres with stiff sidewalls designed to stabilize aero ride height.',
-        concept: 'Active smart compound tyres with internal thermal sensors and adaptive micro-grooves.'
-      }
     },
     wheels: {
+      category: 'Unsprung Mass & Rotational Aero',
       name: 'FORGED MAGNESIUM WHEELS',
       matchKeys: ['rim_front_left', 'rim_front_right', 'rim_back_left', 'rim_back_right'],
       location: 'Supporting the tyres at all four wheel stations.',
@@ -228,11 +181,6 @@
       principle: 'Forged AZ80 magnesium alloy offering maximum structural stiffness with minimal rotational inertia.',
       performanceImpact: 'Lower unsprung mass allows dampers to track road imperfections faster, maintaining tyre contact patch stability.',
       tradeoff: 'Magnesium alloys are expensive and vulnerable to cracking under severe kerb strikes.',
-      carSpecific: {
-        classic: 'Iconic multi-spoke BBS/Enkei 13-inch forged wheels.',
-        modern: 'Mandatory 18-inch BBS forged magnesium rims with aerodynamic wheel cover discs.',
-        concept: 'Enclosed aerodynamic aero-spat covers with dynamic turbine cooling vanes.'
-      }
     }
   };
 
@@ -259,6 +207,34 @@
   }
 
   // -------------------------------------------------------------
+  // THREE.JS CONSTRUCTORS RESOLVER
+  // -------------------------------------------------------------
+  function getThreeKit() {
+    if (!state.engine) return null;
+    const { scene, car, assembly } = state.engine;
+    let anyMesh = null;
+    if (assembly?.partsList?.length > 0) {
+      anyMesh = assembly.partsList.find(p => p.obj?.isMesh && p.obj?.geometry)?.obj;
+    }
+    if (!anyMesh && car?.mesh) {
+      car.mesh.traverse(o => { if (!anyMesh && o.isMesh && o.geometry) anyMesh = o; });
+    }
+    if (!anyMesh && scene) {
+      scene.traverse(o => { if (!anyMesh && o.isMesh && o.geometry) anyMesh = o; });
+    }
+    if (!anyMesh) return null;
+
+    return {
+      Geom: anyMesh.geometry.constructor,
+      Mesh: anyMesh.constructor,
+      Mat: anyMesh.material?.constructor || state.engine?.materials?.materials?.body?.constructor,
+      PosAttr: anyMesh.geometry.attributes.position.constructor,
+      Vector3: car?.container?.position?.constructor || anyMesh.position.constructor,
+      Group: car?.container?.constructor || scene?.constructor
+    };
+  }
+
+  // -------------------------------------------------------------
   // INITIALIZATION & HOOKUP
   // -------------------------------------------------------------
   function initEnhancements(engine) {
@@ -269,14 +245,11 @@
     // Setup Three.js Groups
     initThreeGroups();
 
-    // Cache original geometry for 100% structural fidelity
-    captureOriginalGeometries();
-
     // Attach DOM event handlers
     setupUIEventHandlers();
 
-    // Hook into Mode Manager
-    if (engine.modeManager) {
+    // Hook into Mode Manager safely
+    if (engine.modeManager && typeof engine.modeManager.goTo === 'function') {
       const origGoTo = engine.modeManager.goTo.bind(engine.modeManager);
       engine.modeManager.goTo = function (mode) {
         onModeWillChange(mode);
@@ -286,8 +259,12 @@
       state.currentMode = engine.modeManager.currentMode || 'kit';
     }
 
-    // Set initial mode visibility
-    updateModeVisibility(state.currentMode);
+    // Hook into Mode Picker
+    if (engine.modePicker?.eventOnModeChange?.addEventListener) {
+      engine.modePicker.eventOnModeChange.addEventListener(mode => {
+        onModeDidChange(mode);
+      });
+    }
 
     // Hook into render loop
     window.__F1_ON_UPDATE__ = onRenderUpdate;
@@ -295,551 +272,199 @@
     // Setup interactive raycasting in Kit mode
     setupKitInteraction();
 
-    console.log('[F1 Enhancements] Structural models, interactive aero, and component picking ready.');
+    // Initialize Visibility & Display for Initial Mode.
+    // Kit mode intentionally reveals no educational content until the user
+    // selects a car part — including during loading and first render.
+    updateModeVisibility(state.currentMode);
+
+    console.log('[F1 Enhancements] Clean, minimal architecture ready.');
   }
 
   function initThreeGroups() {
+    const tk = getThreeKit();
     const { scene, car } = state.engine;
-    if (!scene || !car) return;
+    if (!scene || !car || !tk) return;
 
-    const Group = car.container.constructor;
-
-    // Aero visualization container
-    state.aeroGroup = new Group();
+    // Aero visualization container (Studio: world space)
+    state.aeroGroup = new tk.Group();
     state.aeroGroup.name = 'F1_AeroVisualizationGroup';
     scene.add(state.aeroGroup);
 
-    // Kit component highlight container
-    state.kitHighlightGroup = new Group();
-    state.kitHighlightGroup.name = 'F1_KitHighlightGroup';
-    scene.add(state.kitHighlightGroup);
-
-    // Car accessories group attached to car container
-    state.carAccessoriesGroup = new Group();
-    state.carAccessoriesGroup.name = 'F1_CarAccessoriesGroup';
-    car.container.add(state.carAccessoriesGroup);
-
-    buildStructural3DAccessories();
+    // Drive-mode aero force arrows (attached to the car so they follow it)
+    state.driveAeroGroup = new tk.Group();
+    state.driveAeroGroup.name = 'F1_DriveAeroVisualizationGroup';
+    car.container.add(state.driveAeroGroup);
   }
 
   // -------------------------------------------------------------
-  // FEATURE 1: STRUCTURAL CAR GEOMETRY MORPHING & ACCESSORIES
-  // -------------------------------------------------------------
-  function captureOriginalGeometries() {
-    const { car } = state.engine;
-    if (!car || !car.mesh) return;
-
-    car.mesh.traverse(obj => {
-      if (obj.isMesh && obj.geometry && obj.geometry.attributes.position) {
-        if (!state.originalGeometries.has(obj)) {
-          const original = new Float32Array(obj.geometry.attributes.position.array);
-          state.originalGeometries.set(obj, original);
-        }
-      }
-    });
-    console.log(`[F1 Geometry] Captured original geometry for ${state.originalGeometries.size} submeshes.`);
-  }
-
-  function buildStructural3DAccessories() {
-    const { car, materials } = state.engine;
-    if (!car || !car.mesh) return;
-
-    const Group = car.container.constructor;
-    const bodyMat = materials?.materials?.body;
-    if (!bodyMat) return;
-
-    const submesh = car.mesh.children[0];
-    const Geom = submesh.geometry.constructor;
-    const Mesh = submesh.constructor;
-
-    // 1. MODERN ACCESSORIES (Titanium Halo, DRS Actuator Pod, 18" Wheel Aerocovers)
-    state.modernAccGroup = new Group();
-    state.modernAccGroup.name = 'Modern_Structural_Accessories';
-    state.modernAccGroup.visible = false;
-    state.carAccessoriesGroup.add(state.modernAccGroup);
-
-    // Structural Titanium Halo
-    const haloGeom = new Geom();
-    const haloVerts = [
-      // Central pillar (mounted ahead of driver on monocoque)
-      0.55, 0.0, 0.45,   0.24, 0.0, 0.63,
-      // Left loop curving around driver helmet
-      0.24, 0.0, 0.63,   0.02, 0.22, 0.61,
-      0.02, 0.22, 0.61, -0.28, 0.18, 0.54,
-      // Right loop
-      0.24, 0.0, 0.63,   0.02, -0.22, 0.61,
-      0.02, -0.22, 0.61, -0.28, -0.18, 0.54,
-      // Rear arch connecting to rollover hoop
-      -0.28, 0.18, 0.54, -0.28, -0.18, 0.54
-    ];
-    haloGeom.setAttribute('position', new submesh.geometry.attributes.position.constructor(new Float32Array(haloVerts), 3));
-    const haloMat = new bodyMat.constructor({
-      color: 0x141820,
-      roughness: 0.3,
-      metalness: 0.9,
-      emissive: 0x00f0ff,
-      emissiveIntensity: 0.3
-    });
-    const haloMesh = new Mesh(haloGeom, haloMat);
-    state.modernAccGroup.add(haloMesh);
-
-    // DRS Actuator Pod
-    const drsGeom = new Geom();
-    const drsVerts = [
-      -1.54, 0.0, 0.67,  -1.62, 0.0, 0.72,
-      -1.62, 0.0, 0.72,  -1.65, 0.0, 0.68
-    ];
-    drsGeom.setAttribute('position', new submesh.geometry.attributes.position.constructor(new Float32Array(drsVerts), 3));
-    const drsMat = new bodyMat.constructor({ color: 0x00f0ff, emissive: 0x00f0ff, emissiveIntensity: 1.0 });
-    state.modernAccGroup.add(new Mesh(drsGeom, drsMat));
-
-    // 2. CONCEPT X ACCESSORIES (Enclosed Bubble Canopy, Dorsal Shark Fin, Kinetic Beam Wing)
-    state.conceptAccGroup = new Group();
-    state.conceptAccGroup.name = 'ConceptX_Structural_Accessories';
-    state.conceptAccGroup.visible = false;
-    state.carAccessoriesGroup.add(state.conceptAccGroup);
-
-    // Enclosed Fighter-Jet Bubble Canopy
-    const canopyGeom = new Geom();
-    const canopyVerts = [
-      // Windshield to canopy apex
-      0.58, 0.0, 0.44,   0.08, 0.0, 0.64,
-      0.08, 0.0, 0.64,  -0.42, 0.0, 0.58,
-      // Left side curve
-      0.58, 0.0, 0.44,   0.08, 0.22, 0.58,
-      0.08, 0.22, 0.58, -0.42, 0.20, 0.52,
-      -0.42, 0.20, 0.52, -0.42, 0.0, 0.58,
-      // Right side curve
-      0.58, 0.0, 0.44,   0.08, -0.22, 0.58,
-      0.08, -0.22, 0.58, -0.42, -0.20, 0.52,
-      -0.42, -0.20, 0.52, -0.42, 0.0, 0.58
-    ];
-    canopyGeom.setAttribute('position', new submesh.geometry.attributes.position.constructor(new Float32Array(canopyVerts), 3));
-    const canopyMat = new bodyMat.constructor({
-      color: 0x0a0c10,
-      roughness: 0.1,
-      metalness: 0.95,
-      emissive: 0xffaa00,
-      emissiveIntensity: 0.4,
-      transparent: true,
-      opacity: 0.88
-    });
-    state.conceptAccGroup.add(new Mesh(canopyGeom, canopyMat));
-
-    // Dorsal Aerodynamic Shark Fin
-    const finGeom = new Geom();
-    const finVerts = [
-      -0.42, 0.0, 0.58,  -1.35, 0.0, 0.74,
-      -1.35, 0.0, 0.74,  -1.48, 0.0, 0.48,
-      -1.48, 0.0, 0.48,  -0.42, 0.0, 0.48
-    ];
-    finGeom.setAttribute('position', new submesh.geometry.attributes.position.constructor(new Float32Array(finVerts), 3));
-    const finMat = new bodyMat.constructor({ color: 0xffaa00, emissive: 0xff8800, emissiveIntensity: 0.8 });
-    state.conceptAccGroup.add(new Mesh(finGeom, finMat));
-  }
-
-  function applyCarStructuralConfiguration(carKey) {
-    state.activeCar = carKey;
-    const { car, materials } = state.engine;
-    if (!car || !car.mesh) return;
-
-    console.log(`[F1 Car Switch] Transforming model geometry to: ${carKey}`);
-
-    // Update UI buttons
-    document.querySelectorAll('.demoCarPicker-btn').forEach(btn => {
-      const active = btn.dataset.car === carKey;
-      btn.classList.toggle('active', active);
-      btn.setAttribute('aria-pressed', active ? 'true' : 'false');
-    });
-
-    // 1. TRANSFORM 3D MESH VERTICES IN MEMORY
-    car.mesh.traverse(obj => {
-      if (obj.isMesh && obj.geometry && state.originalGeometries.has(obj)) {
-        const orig = state.originalGeometries.get(obj);
-        const current = obj.geometry.attributes.position.array;
-        const name = (obj.name || '').toLowerCase();
-
-        for (let i = 0; i < orig.length; i += 3) {
-          const xOrig = orig[i];
-          const yOrig = orig[i + 1];
-          const zOrig = orig[i + 2];
-
-          if (carKey === 'classic') {
-            // Restore exact classic early-90s geometry
-            current[i] = xOrig;
-            current[i + 1] = yOrig;
-            current[i + 2] = zOrig;
-          } else if (carKey === 'modern') {
-            // 2024 Modern Ground Effect Geometry
-            // Front wing: swept back as a function of y^2, curved upward at tips
-            if (name.includes('front_wing')) {
-              const yNorm = Math.min(1.0, Math.abs(yOrig) / 0.7);
-              current[i] = xOrig - 0.28 * Math.pow(yNorm, 2); // Swept back
-              current[i + 1] = yOrig;
-              current[i + 2] = zOrig + 0.08 * Math.pow(yNorm, 2); // Dihedral curve
-            }
-            // Rear wing: modern curved aerofoil dipping at center
-            else if (name.includes('rear_wing')) {
-              const yNorm = Math.min(1.0, Math.abs(yOrig) / 0.5);
-              current[i] = xOrig;
-              current[i + 1] = yOrig * 1.08;
-              current[i + 2] = zOrig + 0.05 * (1.0 - Math.pow(yNorm, 2)); // Curved center
-            }
-            // Sidepods: modern undercut downwash channel
-            else if (name.includes('sidepod')) {
-              current[i] = xOrig;
-              current[i + 1] = yOrig * (0.85 + 0.25 * zOrig); // Lower undercut
-              current[i + 2] = zOrig;
-            }
-            // Underfloor: widened Venturi tunnels & diffuser kickup
-            else if (name.includes('bottom') || name.includes('diffuser')) {
-              current[i] = xOrig;
-              current[i + 1] = yOrig * 1.18; // 18% wider floor
-              current[i + 2] = zOrig < 0.2 ? zOrig * 0.8 : zOrig; // Lower ground clearance
-            }
-            // Nose tip: lowered towards track level
-            else if (name.includes('main_shell') && xOrig > 1.2) {
-              current[i] = xOrig;
-              current[i + 1] = yOrig;
-              current[i + 2] = zOrig - 0.08; // Lower modern nose
-            } else {
-              current[i] = xOrig;
-              current[i + 1] = yOrig;
-              current[i + 2] = zOrig;
-            }
-          } else if (carKey === 'concept') {
-            // Concept X Futuristic Geometry
-            // Front wing: radical forward-swept delta winglets
-            if (name.includes('front_wing')) {
-              const yNorm = Math.min(1.0, Math.abs(yOrig) / 0.7);
-              current[i] = xOrig + 0.24 * yNorm; // Forward delta sweep
-              current[i + 1] = yOrig * 1.12;
-              current[i + 2] = zOrig + 0.12 * yNorm;
-            }
-            // Rear wing: low-profile active beam wing
-            else if (name.includes('rear_wing')) {
-              current[i] = xOrig - 0.12;
-              current[i + 1] = yOrig * 1.15;
-              current[i + 2] = zOrig - 0.06;
-            }
-            // Sidepods: razor-sharp angular stealth intakes
-            else if (name.includes('sidepod')) {
-              current[i] = xOrig;
-              current[i + 1] = yOrig * 0.92;
-              current[i + 2] = zOrig;
-            }
-            // Floor & diffuser: extended rear diffuser
-            else if (name.includes('bottom') || name.includes('diffuser')) {
-              current[i] = xOrig < -1.0 ? xOrig - 0.22 : xOrig; // Extended rear diffuser
-              current[i + 1] = yOrig * 1.14;
-              current[i + 2] = zOrig;
-            } else {
-              current[i] = xOrig;
-              current[i + 1] = yOrig;
-              current[i + 2] = zOrig;
-            }
-          }
-        }
-
-        obj.geometry.attributes.position.needsUpdate = true;
-        obj.geometry.computeVertexNormals();
-        obj.geometry.computeBoundingBox();
-        obj.geometry.computeBoundingSphere();
-      }
-    });
-
-    // 2. TOGGLE 3D STRUCTURAL ACCESSORIES
-    if (state.modernAccGroup) state.modernAccGroup.visible = (carKey === 'modern');
-    if (state.conceptAccGroup) state.conceptAccGroup.visible = (carKey === 'concept');
-
-    // 3. APPLY MATCHING AESTHETIC FINISH
-    const bodyMat = materials?.materials?.body;
-    if (bodyMat) {
-      if (carKey === 'classic') {
-        bodyMat.emissive.set('#4d586f');
-        bodyMat.emissiveIntensity = 1.0;
-        bodyMat.roughness = 0.8;
-      } else if (carKey === 'modern') {
-        bodyMat.emissive.set('#004455');
-        bodyMat.emissiveIntensity = 1.2;
-        bodyMat.roughness = 0.5;
-      } else if (carKey === 'concept') {
-        bodyMat.emissive.set('#553300');
-        bodyMat.emissiveIntensity = 1.4;
-        bodyMat.roughness = 0.2;
-      }
-      bodyMat.needsUpdate = true;
-    }
-
-    // 4. REFRESH ACTIVE EDUCATIONAL OVERLAYS
-    if (state.activeAero !== 'none') {
-      updateAeroPanel(state.activeAero);
-      buildAeroVisuals(state.activeAero);
-    }
-    if (state.selectedComponentKey) {
-      updateComponentPanel(state.selectedComponentKey);
-    }
-  }
-
-  // -------------------------------------------------------------
-  // FEATURE 2: INTERACTIVE AERODYNAMICS EDUCATION IN STUDIO MODE
+  // FEATURE 2: MINIMALIST, IMMERSIVE AERODYNAMICS IN STUDIO MODE
   // -------------------------------------------------------------
   const AERO_TOPICS = {
     downforce: {
-      title: 'DOWNFORCE & AERODYNAMIC LOADING',
-      tag: '[ AERODYNAMICS // TOPIC 01 ]',
-      desc: 'Downforce is the net vertical aerodynamic force pushing the car into the circuit surface. Unlike increasing the vehicle’s physical mass, downforce increases tyre grip without introducing centrifugal inertia, dramatically raising cornering speeds.',
-      principles: [
-        'Bernoulli suction on inverted aerofoil undersides',
-        'Newtonian downwash deflection of airflow',
-        'Normal tyre load: F_grip = μ · (m·g + F_downforce)'
-      ],
-      tradeoffs: 'Higher wing angles produce downforce at the cost of induced drag (F_drag ∝ C_D·v²). Excessive downforce caps straight-line speed and severely accelerates tyre degradation under high thermal loads.'
+      tag: 'AERO / 01',
+      title: 'DOWNFORCE',
+      desc: 'Wings and underfloor aerodynamics generate a force towards the track, increasing tyre loading and helping the car corner at higher speeds.',
+      principles: 'Bernoulli suction on inverted aerofoils and Newtonian downwash airflow deflection.',
+      tradeoffs: 'Greater downforce raises cornering grip but increases induced drag, penalizing straight-line top speed.'
     },
     drag: {
-      title: 'DRAG & AERODYNAMIC WAKE',
-      tag: '[ AERODYNAMICS // TOPIC 02 ]',
-      desc: 'Aerodynamic drag opposes the vehicle\'s forward motion. Power required to overcome drag scales with the cube of velocity (P = F_D · v ∝ v³), meaning over 80% of engine output at 300 km/h is consumed simply pushing air aside. The car leaves behind a massive turbulent wake ("dirty air") that destabilizes following cars.',
-      principles: [
-        'Pressure drag from front stagnation & rear separation',
-        'Induced vortex drag generated by wingtip vortices',
-        'Drag Reduction System (DRS) dumps rear flap drag by ~30%'
-      ],
-      tradeoffs: 'Trimming drag increases top speed on straights but compromises stability under high-speed braking and cornering. DRS offers temporary drag shedding on sanctioned straightaways.'
+      tag: 'AERO / 02',
+      title: 'DRAG',
+      desc: 'Aerodynamic drag is the resistance that opposes the car’s forward motion, produced by pressure differences and skin friction across the whole car.',
+      principles: 'Pressure drag across blunt trailing edges, skin-friction drag over every surface, and induced drag from the vortices that create downforce.',
+      tradeoffs: 'Cutting drag raises straight-line speed and efficiency, but trimming downforce to do so reduces cornering grip.'
     },
     groundEffect: {
-      title: 'GROUND EFFECT & VENTURI TUNNELS',
-      tag: '[ AERODYNAMICS // TOPIC 03 ]',
-      desc: 'Underfloor ground effect generates over 55% of the total vehicle downforce with remarkable efficiency. Air passing beneath the chassis is funneled through contoured Venturi tunnels, accelerating through a minimum-clearance throat to create severe suction across the chassis floor before expanding through the rear diffuser.',
-      principles: [
-        'Venturi effect: constriction accelerates fluid, dropping static pressure',
-        'Diffuser pressure recovery expands flow back to ambient pressure',
-        'Floor edge vortex sealing isolates low pressure from side air ingestion'
-      ],
-      tradeoffs: 'Extreme ride-height sensitivity. Running the floor just 5 mm too low or striking a kerb can cause catastrophic underfloor flow stall, causing the car to bounce uncontrollably ("porpoising") and lose all grip.'
+      tag: 'AERO / 03',
+      title: 'GROUND EFFECT',
+      desc: 'Venturi tunnels beneath the floor accelerate air, dropping static pressure to suction the chassis securely to the circuit.',
+      principles: 'Venturi converging-diverging ducted acceleration and diffuser ambient pressure recovery.',
+      tradeoffs: 'Produces high-efficiency downforce with minimal drag, but is highly sensitive to ride-height changes.'
     },
     balance: {
-      title: 'AERODYNAMIC BALANCE & COP MIGRATION',
-      tag: '[ AERODYNAMICS // TOPIC 04 ]',
-      desc: 'Aerodynamic balance is the longitudinal distribution of downforce between the front and rear axles. To maintain neutral handling across the speed envelope, engineers must track the Center of Pressure (CoP) relative to the vehicle’s Center of Gravity (CoG).',
-      principles: [
-        'Front axle downforce dictates high-speed turn-in grip',
-        'Rear axle downforce provides braking and traction stability',
-        'Dynamic pitch sensitivity under braking shifts balance forward'
-      ],
-      tradeoffs: 'Shifting balance forward cures slow-speed understeer but risks high-speed snap oversteer. Shifting balance rearward stabilizes high-speed sweeps but induces stubborn mid-corner push.'
+      tag: 'AERO / 04',
+      title: 'AERO BALANCE',
+      desc: 'The distribution of downforce between front and rear axles dictates steering turn-in authority and high-speed stability.',
+      principles: 'Longitudinal Center of Pressure (CoP) alignment relative to the vehicle Center of Gravity (CoG).',
+      tradeoffs: 'Forward balance boosts high-speed turn-in at the risk of oversteer; rearward balance creates secure stability with understeer.'
+    },
+    lift: {
+      tag: 'FORCE / 03',
+      title: 'LIFT',
+      desc: 'Lift is the upward vertical aerodynamic force on the car. Where downforce presses the car down, positive lift unloads the tyres and reduces grip.',
+      principles: 'Arises from the pressure difference between the upper and lower surfaces of every bodywork element.',
+      tradeoffs: 'Every surface is shaped to invert lift into negative lift (downforce); the sharper the inversion, the more drag it tends to add.'
+    },
+    sideForce: {
+      tag: 'FORCE / 04',
+      title: 'SIDE FORCE',
+      desc: 'Side force is the lateral aerodynamic force on the car, generated in yaw by crosswinds, cornering slip angle and asymmetric bodywork.',
+      principles: 'Pressure imbalance across the flanks, sidepods and floor edges, plus directional (yawed) airflow over the bodywork.',
+      tradeoffs: 'Managed well it adds cornering stability; managed poorly it destabilises the car in crosswinds and adds straight-line drag.'
+    },
+    airflow: {
+      tag: 'AERO / 04',
+      title: 'AIRFLOW',
+      desc: 'Air arriving at speed is guided from the front wing, over and around the bodywork, then re-energised toward the rear wing, floor and diffuser.',
+      principles: 'Streamline attachment and downwash: the front wing conditions the flow while sidepod undercuts and floor edges channel it rearward for consistent downforce.',
+      tradeoffs: 'Clean, attached flow maximises downforce efficiency; early separation or turbulence wastes energy and destabilises the rear of the car.'
+    },
+    wake: {
+      tag: 'AERO / 05',
+      title: 'WAKE & TURBULENCE',
+      desc: 'Behind the car the air leaves disturbed and lower in energy, forming a spreading wake of vortices shed by the rear wing, diffuser and tyres.',
+      principles: 'Flow separation, wing-tip vortices and diffuser pressure recovery: the diffuser slows the underfloor flow back to ambient as the wing sheds trailing vortices.',
+      tradeoffs: 'A smaller, higher-energy wake lowers this car’s drag, but it also robs a following car of downforce — the effect known as “dirty air”.'
     }
   };
+
+  // Drive-mode force set (vertical / longitudinal / lateral decomposition)
+  const AERO_MENU_LABELS = {
+    downforce: 'Downforce',
+    drag: 'Drag',
+    lift: 'Lift',
+    airflow: 'Airflow',
+    wake: 'Wake & Turbulence',
+    sideForce: 'Side Force',
+    groundEffect: 'Ground Effect',
+    balance: 'Aero Balance'
+  };
+  const STUDIO_TOPICS = ['downforce', 'drag', 'groundEffect', 'balance'];
+  const DRIVE_TOPIC_COLORS = {
+    downforce: 0x2ef2ff,
+    drag: 0xffa53c,
+    lift: 0xff4d6d,
+    airflow: 0x7cf9ff,
+    wake: 0xffb15e
+  };
+
+  // Demo-mode aero loop: each concept is shown slowly, one at a time, on repeat.
+  const AERO_LOOP_SEQUENCE = ['downforce', 'drag', 'lift', 'airflow', 'wake'];
+  const AERO_LOOP_PHASE = { in: 0.8, hold: 3.4, out: 0.8 };
+
+  function renderAeroMenu(topics) {
+    const dropdown = document.getElementById('demoAeroDropdown');
+    if (!dropdown) return;
+    dropdown.innerHTML = '';
+
+    const addOption = (topic, extraClass) => {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'f1-aero-opt' + (extraClass ? ' ' + extraClass : '');
+      btn.dataset.topic = topic;
+      btn.setAttribute('role', 'menuitem');
+      btn.textContent = topic === 'none' ? '[ Reset View ]' : (AERO_MENU_LABELS[topic] || topic);
+      if (state.activeAero === topic) btn.classList.add('active');
+      btn.addEventListener('click', () => {
+        setAeroTopic(topic);
+        dropdown.classList.remove('open');
+        document.getElementById('demoAeroBtn')?.setAttribute('aria-expanded', 'false');
+      });
+      dropdown.appendChild(btn);
+    };
+
+    topics.forEach(t => addOption(t, ''));
+    addOption('none', 'f1-aero-off');
+  }
 
   function setAeroTopic(topic) {
     state.activeAero = topic;
 
-    // Update buttons
-    document.querySelectorAll('.demoAeroPicker-btn').forEach(btn => {
-      const active = btn.dataset.concept === topic;
-      btn.classList.toggle('active', active);
-      btn.setAttribute('aria-pressed', active ? 'true' : 'false');
-    });
+    const aeroBtn = document.getElementById('demoAeroBtn');
+    const aeroInfo = document.getElementById('demoAeroInfo');
 
-    const panel = document.getElementById('demoAeroPanel');
-    const speedCtrl = document.getElementById('demoAeroSpeed');
+    // Update active state in dropdown
+    document.querySelectorAll('.f1-aero-opt').forEach(opt => {
+      opt.classList.toggle('active', opt.dataset.topic === topic);
+    });
 
     if (topic === 'none') {
-      if (panel) panel.classList.remove('visible');
-      if (speedCtrl) speedCtrl.classList.remove('visible');
-      clearAeroVisuals();
-      restoreCarMaterials();
-    } else {
-      if (panel) panel.classList.add('visible');
-      if (speedCtrl) speedCtrl.classList.add('visible');
-      updateAeroPanel(topic);
-      buildAeroVisuals(topic);
-    }
-  }
-
-  function updateAeroPanel(topic) {
-    const data = AERO_TOPICS[topic];
-    if (!data) return;
-
-    const panel = document.getElementById('demoAeroPanel');
-    if (!panel) return;
-
-    const v = state.airspeed;
-    const vScale = Math.pow(v / 240, 2).toFixed(2);
-    const carMeta = state.activeCar === 'classic' ? '1991 Classic V10' : state.activeCar === 'modern' ? '2024 Ground-Effect V6' : 'Concept X Active Aero';
-
-    let interactiveControlsHTML = '';
-
-    if (topic === 'downforce') {
-      const downforceLoad = Math.round(750 * vScale * (state.wingAngle / 28));
-      const dragLoad = Math.round(220 * vScale * Math.pow(state.wingAngle / 28, 1.4));
-      const projectedTopSpeed = Math.round(350 - (state.wingAngle - 15) * 1.4);
-
-      interactiveControlsHTML = `
-        <div class="f1-interactive-block">
-          <div class="f1-slider-row">
-            <span class="f1-slider-label">REAR WING FLAP ANGLE: <strong>${state.wingAngle}°</strong></span>
-            <input type="range" class="f1-slider" id="wingAngleSlider" min="15" max="38" value="${state.wingAngle}">
-          </div>
-          <div class="f1-live-metrics">
-            <div class="f1-live-cell">
-              <span class="f1-metric-label">TOTAL DOWNFORCE:</span>
-              <span class="f1-metric-val highlight-cyan">${downforceLoad} kgf</span>
-            </div>
-            <div class="f1-live-cell">
-              <span class="f1-metric-label">PROFILE DRAG:</span>
-              <span class="f1-metric-val highlight-red">${dragLoad} kgf</span>
-            </div>
-            <div class="f1-live-cell">
-              <span class="f1-metric-label">EST. TOP SPEED:</span>
-              <span class="f1-metric-val">${projectedTopSpeed} km/h</span>
-            </div>
-          </div>
-        </div>
-      `;
-    } else if (topic === 'drag') {
-      const topSpeed = state.drsOpen ? 348 : 330;
-      const dragReduction = state.drsOpen ? '-32% (DRS ACTIVE)' : '0% (MAX DOWNFORCE)';
-
-      interactiveControlsHTML = `
-        <div class="f1-interactive-block">
-          <div class="f1-button-row">
-            <span class="f1-slider-label">DRS WING ACTUATOR:</span>
-            <button class="f1-toggle-btn ${state.drsOpen ? 'active' : ''}" id="drsToggleBtn">
-              ${state.drsOpen ? '[ DRS ACTIVATED - FLAP OPEN ]' : '[ DRS CLOSED - HIGH DRAG ]'}
-            </button>
-          </div>
-          <div class="f1-live-metrics">
-            <div class="f1-live-cell">
-              <span class="f1-metric-label">DRAG STATUS:</span>
-              <span class="f1-metric-val ${state.drsOpen ? 'highlight-cyan' : 'highlight-red'}">${dragReduction}</span>
-            </div>
-            <div class="f1-live-cell">
-              <span class="f1-metric-label">STRAIGHTAWAY SPEED:</span>
-              <span class="f1-metric-val highlight-cyan">${topSpeed} km/h</span>
-            </div>
-          </div>
-        </div>
-      `;
-    } else if (topic === 'groundEffect') {
-      const suctionStatus = state.rideHeight === 25 ? 'MAX SUCTION (HIGH STALL RISK)' : state.rideHeight === 35 ? 'OPTIMAL VENTURI ENVELOPE' : 'COMPLIANT (LOW SUCTION)';
-
-      interactiveControlsHTML = `
-        <div class="f1-interactive-block">
-          <div class="f1-button-row">
-            <span class="f1-slider-label">STATIC RIDE HEIGHT:</span>
-            <button class="f1-chip-btn ${state.rideHeight === 25 ? 'active' : ''}" data-rh="25">25 MM</button>
-            <button class="f1-chip-btn ${state.rideHeight === 35 ? 'active' : ''}" data-rh="35">35 MM</button>
-            <button class="f1-chip-btn ${state.rideHeight === 48 ? 'active' : ''}" data-rh="48">48 MM</button>
-          </div>
-          <div class="f1-live-metrics">
-            <div class="f1-live-cell">
-              <span class="f1-metric-label">VENTURI CONDITION:</span>
-              <span class="f1-metric-val highlight-green">${suctionStatus}</span>
-            </div>
-          </div>
-          <div class="f1-button-row" style="margin-top: 8px;">
-            <button class="f1-toggle-btn" id="inspectUndersideCameraBtn">
-              ${state.isUndersideView ? '[ RETURN TO STUDIO CAMERA ]' : '[ CAMERA: INSPECT UNDERSIDE VENTURI ]'}
-            </button>
-          </div>
-        </div>
-      `;
-    } else if (topic === 'balance') {
-      const rearSplit = 100 - state.frontAeroSplit;
-      const handlingState = state.frontAeroSplit > 45 ? 'OVERSTEER BIAS (AGGRESSIVE TURN-IN)' : state.frontAeroSplit < 42 ? 'UNDERSTEER BIAS (STABLE HIGH SPEED)' : 'NEUTRAL / BALANCED PLATFORM';
-
-      interactiveControlsHTML = `
-        <div class="f1-interactive-block">
-          <div class="f1-slider-row">
-            <span class="f1-slider-label">AERO BALANCE SPLIT: <strong>${state.frontAeroSplit}% FRONT / ${rearSplit}% REAR</strong></span>
-            <input type="range" class="f1-slider" id="aeroSplitSlider" min="40" max="48" value="${state.frontAeroSplit}">
-          </div>
-          <div class="f1-live-metrics">
-            <div class="f1-live-cell">
-              <span class="f1-metric-label">HANDLING TRAIT:</span>
-              <span class="f1-metric-val highlight-cyan">${handlingState}</span>
-            </div>
-          </div>
-        </div>
-      `;
-    }
-
-    panel.innerHTML = `
-      <div class="f1-panel-header">
-        <span class="f1-panel-tag">${data.tag}</span>
-        <button class="f1-panel-close" id="closeAeroTopicBtn" aria-label="Close Aerodynamic Explorer">&times;</button>
-      </div>
-      <h3 class="f1-panel-title">${data.title}</h3>
-      <p class="f1-panel-desc">${data.desc}</p>
-
-      <div class="f1-panel-section">
-        <span class="f1-section-label">PHYSICAL PRINCIPLES:</span>
-        <ul class="f1-bullet-list">
-          ${data.principles.map(p => `<li>${p}</li>`).join('')}
-        </ul>
-      </div>
-
-      <div class="f1-panel-section">
-        <span class="f1-section-label">ENGINEERING TRADE-OFFS:</span>
-        <p class="f1-field-text">${data.tradeoffs}</p>
-      </div>
-
-      ${interactiveControlsHTML}
-    `;
-
-    // Bind interactive elements
-    document.getElementById('closeAeroTopicBtn')?.addEventListener('click', () => setAeroTopic('none'));
-
-    document.getElementById('wingAngleSlider')?.addEventListener('input', e => {
-      state.wingAngle = parseInt(e.target.value, 10);
-      updateAeroPanel('downforce');
-      buildAeroVisuals('downforce');
-    });
-
-    document.getElementById('drsToggleBtn')?.addEventListener('click', () => {
-      state.drsOpen = !state.drsOpen;
-      updateAeroPanel('drag');
-      buildAeroVisuals('drag');
-    });
-
-    panel.querySelectorAll('[data-rh]').forEach(btn => {
-      btn.addEventListener('click', () => {
-        state.rideHeight = parseInt(btn.dataset.rh, 10);
-        updateAeroPanel('groundEffect');
-        buildAeroVisuals('groundEffect');
-      });
-    });
-
-    document.getElementById('inspectUndersideCameraBtn')?.addEventListener('click', toggleUndersideCamera);
-
-    document.getElementById('aeroSplitSlider')?.addEventListener('input', e => {
-      state.frontAeroSplit = parseInt(e.target.value, 10);
-      updateAeroPanel('balance');
-      buildAeroVisuals('balance');
-    });
-  }
-
-  function toggleUndersideCamera() {
-    const { camera } = state.engine;
-    if (!camera) return;
-
-    state.isUndersideView = !state.isUndersideView;
-    if (state.isUndersideView) {
-      if (!state.cameraPrevPos) state.cameraPrevPos = camera.position.clone();
-      // Position camera below the car looking up into the floor tunnels
-      camera.position.set(0.0, -1.9, 0.15);
-      camera.lookAt(0, 0, 0.35);
-    } else {
-      if (state.cameraPrevPos) {
-        camera.position.copy(state.cameraPrevPos);
-        camera.lookAt(0, 0, 0.2);
-      } else {
-        camera.position.set(-3.2, 2.4, 3.2);
-        camera.lookAt(0, 0, 0.2);
+      if (aeroBtn) {
+        aeroBtn.textContent = '[ AERO ]';
+        aeroBtn.classList.remove('active');
       }
+      if (aeroInfo) aeroInfo.classList.remove('visible');
+      clearAeroVisuals();
+      clearDriveAeroVisuals();
+      restoreCarMaterials();
+      return;
     }
-    updateAeroPanel('groundEffect');
+
+    // Update button label to indicate active topic
+    const label = AERO_TOPICS[topic]?.title || topic.toUpperCase();
+    if (aeroBtn) {
+      aeroBtn.textContent = `[ AERO: ${label} ]`;
+      aeroBtn.classList.add('active');
+    }
+
+    updateAeroOverlay(topic);
+    buildAeroVisuals(topic);
+  }
+
+  function updateAeroOverlay(topic) {
+    const data = AERO_TOPICS[topic];
+    const info = document.getElementById('demoAeroInfo');
+    if (!data || !info) return;
+
+    const tagEl = document.getElementById('demoAeroTag');
+    const titleEl = document.getElementById('demoAeroTitle');
+    const descEl = document.getElementById('demoAeroDesc');
+    const principlesEl = document.getElementById('demoAeroPrinciples');
+    const tradeoffEl = document.getElementById('demoAeroTradeoff');
+    const detailsEl = document.getElementById('demoAeroDetails');
+    const moreBtn = document.getElementById('toggleAeroDetailsBtn');
+
+    if (tagEl) tagEl.textContent = data.tag;
+    if (titleEl) titleEl.textContent = data.title;
+    if (descEl) descEl.textContent = data.desc;
+    if (principlesEl) principlesEl.textContent = data.principles;
+    if (tradeoffEl) tradeoffEl.textContent = data.tradeoffs;
+
+    // Reset details disclosure to collapsed
+    if (detailsEl) detailsEl.style.display = 'none';
+    if (moreBtn) moreBtn.textContent = '[+ MORE]';
+
+    info.classList.add('visible');
   }
 
   function clearAeroVisuals() {
@@ -856,256 +481,610 @@
   }
 
   function restoreCarMaterials() {
-    const bodyMat = state.engine.materials?.materials?.body;
+    const { car, materials } = state.engine || {};
+    if (!car || !materials) return;
+    const bodyMat = materials.materials?.body;
     if (bodyMat) {
-      bodyMat.emissive.set(state.activeCar === 'classic' ? '#4d586f' : state.activeCar === 'modern' ? '#004455' : '#553300');
-      bodyMat.emissiveIntensity = 1.0;
+      bodyMat.color?.set(0xffffff);
+      bodyMat.needsUpdate = true;
+    }
+  }
+
+  // -------------------------------------------------------------
+  // FEATURE 3: RESTRAINED, TECHNICAL STREAMLINES (NO POLYGONS/SHARDS)
+  // -------------------------------------------------------------
+  function clearDriveAeroVisuals() {
+    state.driveAeroAnim = null;
+    const group = state.driveAeroGroup;
+    if (!group) return;
+    while (group.children.length > 0) {
+      const obj = group.children[0];
+      if (obj.geometry) obj.geometry.dispose();
+      if (obj.material) {
+        if (Array.isArray(obj.material)) obj.material.forEach(m => m.dispose());
+        else obj.material.dispose();
+      }
+      group.remove(obj);
     }
   }
 
   function buildAeroVisuals(topic) {
     clearAeroVisuals();
-    const { scene, car, materials } = state.engine;
-    if (!state.aeroGroup || !scene || !car) return;
+    clearDriveAeroVisuals();
+    const tk = getThreeKit();
+    if (!tk) return;
 
-    const submesh = car.mesh?.children?.[0];
-    if (!submesh || !submesh.geometry) return;
+    const LineSegments = state.engine.LineSegments;
+    const LineBasicMaterial = state.engine.LineBasicMaterial;
+    if (!LineSegments || !LineBasicMaterial) return;
 
-    const Geom = submesh.geometry.constructor;
-    const Mesh = submesh.constructor;
-    const Mat = materials?.materials?.body?.constructor || submesh.material.constructor;
+    // Drive mode: physically meaningful force arrows in the car's own frame
+    if (state.currentMode === 'assembled') {
+      buildDriveAeroVisuals(topic);
+      return;
+    }
 
-    const speedScale = Math.pow(state.airspeed / 240, 2);
-
-    // 1. DOWNFORCE TOPIC
     if (topic === 'downforce') {
-      const bodyMat = materials?.materials?.body;
-      if (bodyMat) {
-        bodyMat.emissive.set(0x00e5ff);
-        bodyMat.emissiveIntensity = 1.4;
-      }
-
-      const wingFactor = state.wingAngle / 28;
-      const forceScale = 0.85 * speedScale * wingFactor;
-
-      // Downward force vectors from front wing, underfloor CoP, and rear wing
-      const vectors = [
-        { x: 1.45, y: 0.35, z: 0.22, len: forceScale * 0.7, color: 0x00e5ff },
-        { x: 1.45, y: -0.35, z: 0.22, len: forceScale * 0.7, color: 0x00e5ff },
-        { x: 0.10, y: 0.40, z: 0.16, len: forceScale * 1.1, color: 0x00ffff },
-        { x: 0.10, y: -0.40, z: 0.16, len: forceScale * 1.1, color: 0x00ffff },
-        { x: -1.58, y: 0.35, z: 0.72, len: forceScale * 1.25, color: 0x00e5ff },
-        { x: -1.58, y: -0.35, z: 0.72, len: forceScale * 1.25, color: 0x00e5ff }
-      ];
-
-      vectors.forEach(v => {
-        createForceArrow(v.x, v.y, v.z, 0, 0, -v.len, v.color);
-      });
-
-      // Streamlines curving downward
-      createLaminarStreamlines([
-        { start: [2.4, 0.35, 0.4], end: [1.2, 0.35, 0.15], color: 0x00e5ff },
-        { start: [2.4, -0.35, 0.4], end: [1.2, -0.35, 0.15], color: 0x00e5ff },
-        { start: [-1.0, 0.32, 0.88], end: [-2.5, 0.32, 0.52], color: 0x00e5ff },
-        { start: [-1.0, -0.32, 0.88], end: [-2.5, -0.32, 0.52], color: 0x00e5ff }
-      ]);
-    }
-
-    // 2. DRAG & WAKE TOPIC
-    else if (topic === 'drag') {
-      const bodyMat = materials?.materials?.body;
-      if (bodyMat) {
-        bodyMat.emissive.set(0xff4422);
-        bodyMat.emissiveIntensity = 1.3;
-      }
-
-      const dragMultiplier = state.drsOpen ? 0.65 : 1.0;
-      const dragLen = 0.75 * speedScale * dragMultiplier;
-
-      // Front drag resistance vector
-      createForceArrow(1.85, 0, 0.25, dragLen, 0, 0, 0xff2211);
-
-      // Incoming free-stream air
-      const incoming = [];
-      for (let y = -0.7; y <= 0.7; y += 0.35) {
-        for (let z = 0.12; z <= 0.65; z += 0.25) {
-          incoming.push({
-            start: [2.8, y, z],
-            end: [1.35, y * 1.15, z],
-            color: 0xffffff
-          });
-        }
-      }
-      createLaminarStreamlines(incoming);
-
-      // Swirling Wake Vortex Particles behind car
-      createTurbulentWake(-1.6, -4.2, speedScale * dragMultiplier);
-    }
-
-    // 3. GROUND EFFECT TOPIC
-    else if (topic === 'groundEffect') {
-      const bodyMat = materials?.materials?.body;
-      if (bodyMat) {
-        bodyMat.emissive.set(0x00ff88);
-        bodyMat.emissiveIntensity = 1.5;
-      }
-
-      const rhFactor = (48 - state.rideHeight) / 23; // Higher when lower
-      const geStreams = [];
-      for (let y = -0.38; y <= 0.38; y += 0.12) {
-        geStreams.push({
-          start: [1.35, y, 0.08],
-          end: [-1.65, y * 1.35, 0.24], // Expands up through diffuser
-          color: 0x00ff88
-        });
-      }
-      createLaminarStreamlines(geStreams);
-
-      // Suction isobar contour under the floor
-      createUnderfloorIsobars(speedScale * (1 + rhFactor * 0.5));
-    }
-
-    // 4. AERO BALANCE TOPIC
-    else if (topic === 'balance') {
-      const bodyMat = materials?.materials?.body;
-      if (bodyMat) {
-        bodyMat.emissive.set(0x00e5ff);
-        bodyMat.emissiveIntensity = 1.2;
-      }
-
-      const fRatio = state.frontAeroSplit / 100;
-      const rRatio = (100 - state.frontAeroSplit) / 100;
-
-      // Front axle downforce arrow
-      createForceArrow(1.42, 0, 0.25, 0, 0, -1.4 * speedScale * fRatio, 0x00e5ff);
-
-      // Rear axle downforce arrow
-      createForceArrow(-1.55, 0, 0.65, 0, 0, -1.4 * speedScale * rRatio, 0xffaa00);
+      buildDownforceVisuals(tk, LineSegments, LineBasicMaterial);
+    } else if (topic === 'drag') {
+      buildDragWakeVisuals(tk, LineSegments, LineBasicMaterial);
+    } else if (topic === 'groundEffect') {
+      buildGroundEffectVisuals(tk, LineSegments, LineBasicMaterial);
+    } else if (topic === 'balance') {
+      buildAeroBalanceVisuals(tk, LineSegments, LineBasicMaterial);
     }
   }
 
-  function createForceArrow(x, y, z, dx, dy, dz, colorHex) {
-    const submesh = state.engine.car.mesh?.children?.[0];
-    if (!submesh) return;
+  // Appends a single 3D arrow (shaft + 4-sided pyramid head) as line segments.
+  // Car frame: +X forward, +Y up, +/-Z lateral.
+  function pushArrow(verts, from, to, headLen, headWidth, thickness) {
+    const [x0, y0, z0] = from;
+    const [x1, y1, z1] = to;
 
-    const Geom = submesh.geometry.constructor;
-    const Mesh = submesh.constructor;
-    const Mat = submesh.material.constructor;
+    let dx = x1 - x0, dy = y1 - y0, dz = z1 - z0;
+    const len = Math.hypot(dx, dy, dz) || 1;
+    dx /= len; dy /= len; dz /= len;
 
-    const geom = new Geom();
-    const vertices = new Float32Array([
-      x, y, z,
-      x + dx, y + dy, z + dz
-    ]);
-    geom.setAttribute('position', new submesh.geometry.attributes.position.constructor(vertices, 3));
-    const mat = new Mat({
-      color: colorHex,
-      emissive: colorHex,
-      emissiveIntensity: 1.8,
-      transparent: true,
-      opacity: 0.95
-    });
-    state.aeroGroup.add(new Mesh(geom, mat));
-  }
+    const hl = Math.min(headLen, len * 0.55);
+    const hw = headWidth;
+    const bx = x1 - dx * hl, by = y1 - dy * hl, bz = z1 - dz * hl;
 
-  function createLaminarStreamlines(lines) {
-    const submesh = state.engine.car.mesh?.children?.[0];
-    if (!submesh) return;
+    // First perpendicular axis (u)
+    let ux, uy, uz;
+    if (Math.abs(dy) < 0.9) { ux = -dz; uy = 0; uz = dx; }
+    else { ux = 1; uy = 0; uz = 0; }
+    const ul = Math.hypot(ux, uy, uz) || 1; ux /= ul; uy /= ul; uz /= ul;
 
-    const Geom = submesh.geometry.constructor;
-    const Mesh = submesh.constructor;
-    const Mat = submesh.material.constructor;
-
-    lines.forEach(l => {
-      const geom = new Geom();
-      const vertices = new Float32Array([
-        l.start[0], l.start[1], l.start[2],
-        l.end[0], l.end[1], l.end[2]
-      ]);
-      geom.setAttribute('position', new submesh.geometry.attributes.position.constructor(vertices, 3));
-      const mat = new Mat({
-        color: l.color,
-        emissive: l.color,
-        emissiveIntensity: 1.3,
-        transparent: true,
-        opacity: 0.8
-      });
-      state.aeroGroup.add(new Mesh(geom, mat));
-    });
-  }
-
-  function createTurbulentWake(startX, endX, intensity) {
-    const submesh = state.engine.car.mesh?.children?.[0];
-    if (!submesh) return;
-
-    const Geom = submesh.geometry.constructor;
-    const Mesh = submesh.constructor;
-    const Mat = submesh.material.constructor;
-
-    const count = 56;
-    const vertices = [];
-    for (let i = 0; i < count; i++) {
-      const t = i / count;
-      const x = startX + (endX - startX) * t;
-      const spread = (1 - t) * 0.35 + t * 1.3;
-      const y = (Math.random() - 0.5) * spread;
-      const z = 0.12 + Math.random() * 0.72;
-      vertices.push(x, y, z);
-      // Swirling vector
-      vertices.push(x - 0.12, y + (Math.random() - 0.5) * 0.08, z + (Math.random() - 0.5) * 0.06);
+    // Shaft: a thin two-line ribbon when a thickness is given, so bold arrows
+    // stay legible (WebGL ignores line width on most platforms).
+    const th = thickness || 0;
+    if (th > 0) {
+      verts.push(x0 + ux * th, y0 + uy * th, z0 + uz * th, x1 + ux * th, y1 + uy * th, z1 + uz * th);
+      verts.push(x0 - ux * th, y0 - uy * th, z0 - uz * th, x1 - ux * th, y1 - uy * th, z1 - uz * th);
+    } else {
+      verts.push(x0, y0, z0, x1, y1, z1);
     }
-    const geom = new Geom();
-    geom.setAttribute('position', new submesh.geometry.attributes.position.constructor(new Float32Array(vertices), 3));
-    const mat = new Mat({
-      color: 0xff4422,
-      emissive: 0xff3311,
-      emissiveIntensity: 1.6,
-      transparent: true,
-      opacity: 0.65
-    });
-    state.aeroGroup.add(new Mesh(geom, mat));
+
+    // Second perpendicular axis (v = d x u)
+    let vx = dy * uz - dz * uy, vy = dz * ux - dx * uz, vz = dx * uy - dy * ux;
+    const vl = Math.hypot(vx, vy, vz) || 1; vx /= vl; vy /= vl; vz /= vl;
+
+    const p1 = [bx + ux * hw, by + uy * hw, bz + uz * hw];
+    const p2 = [bx - ux * hw, by - uy * hw, bz - uz * hw];
+    const p3 = [bx + vx * hw, by + vy * hw, bz + vz * hw];
+    const p4 = [bx - vx * hw, by - vy * hw, bz - vz * hw];
+
+    // Cone edges from tip
+    verts.push(x1, y1, z1, p1[0], p1[1], p1[2]);
+    verts.push(x1, y1, z1, p2[0], p2[1], p2[2]);
+    verts.push(x1, y1, z1, p3[0], p3[1], p3[2]);
+    verts.push(x1, y1, z1, p4[0], p4[1], p4[2]);
+    // Base ring
+    verts.push(p1[0], p1[1], p1[2], p3[0], p3[1], p3[2]);
+    verts.push(p3[0], p3[1], p3[2], p2[0], p2[1], p2[2]);
+    verts.push(p2[0], p2[1], p2[2], p4[0], p4[1], p4[2]);
+    verts.push(p4[0], p4[1], p4[2], p1[0], p1[1], p1[2]);
   }
 
-  function createUnderfloorIsobars(scale) {
-    const submesh = state.engine.car.mesh?.children?.[0];
-    if (!submesh) return;
+  // Car-local extents used to place the drive-mode indicators.
+  const DRIVE_X_FRONT = 2.0;   // assembled car frame: x spans roughly [-1.83, 1.83]
+  const DRIVE_X_REAR = -2.0;
 
-    const Geom = submesh.geometry.constructor;
-    const Mesh = submesh.constructor;
-    const Mat = submesh.material.constructor;
+  function getDriveKit() {
+    const tk = getThreeKit();
+    if (!tk) return null;
+    const { LineSegments, LineBasicMaterial, Points, PointsMaterial } = state.engine || {};
+    if (!LineSegments || !LineBasicMaterial || !Points || !PointsMaterial) return null;
+    return { tk, LineSegments, LineBasicMaterial, Points, PointsMaterial };
+  }
 
-    const geom = new Geom();
-    const vertices = new Float32Array([
-      1.15, -0.42, 0.04,  -1.25, -0.48, 0.04,
-      1.15,  0.42, 0.04,  -1.25,  0.48, 0.04
-    ]);
-    geom.setAttribute('position', new submesh.geometry.attributes.position.constructor(vertices, 3));
-    const mat = new Mat({
-      color: 0x00ff88,
-      emissive: 0x00ff88,
-      emissiveIntensity: 1.4,
-      transparent: true,
-      opacity: 0.55
+  function addDriveArrows(kit, arrows, color) {
+    const { tk, LineSegments, LineBasicMaterial } = kit;
+    const geom = new tk.Geom();
+    geom.setAttribute('position', new tk.PosAttr(new Float32Array(arrows), 3));
+    const mat = new LineBasicMaterial({ color, transparent: true, opacity: 1, depthWrite: false, depthTest: false });
+    const seg = new LineSegments(geom, mat);
+    seg.name = 'F1_DriveForceArrows';
+    seg.renderOrder = 20;
+    seg.frustumCulled = false;
+    state.driveAeroGroup.add(seg);
+  }
+
+  // Animated streamline particles flowing front -> rear over and around the car.
+  function buildAirflowParticles(kit) {
+    const { tk, Points, PointsMaterial } = kit;
+    const COUNT = 140;
+    const laneZ = [0, -0.35, 0.35, -0.60, 0.60, -0.80, 0.80];
+    const xs = new Float32Array(COUNT), ys = new Float32Array(COUNT), zs = new Float32Array(COUNT);
+    const spd = new Float32Array(COUNT), pha = new Float32Array(COUNT), hump = new Float32Array(COUNT);
+    const pos = new Float32Array(COUNT * 3);
+
+    for (let i = 0; i < COUNT; i++) {
+      xs[i] = DRIVE_X_REAR + Math.random() * (DRIVE_X_FRONT - DRIVE_X_REAR);
+      ys[i] = 0.18 + Math.random() * 0.28;
+      zs[i] = laneZ[i % laneZ.length] + (Math.random() - 0.5) * 0.12;
+      spd[i] = 2.4 + Math.random() * 1.8;
+      pha[i] = Math.random() * Math.PI * 2;
+      hump[i] = 0.16 + Math.random() * 0.18;
+      pos[i * 3] = xs[i]; pos[i * 3 + 1] = ys[i]; pos[i * 3 + 2] = zs[i];
+    }
+
+    const geom = new tk.Geom();
+    geom.setAttribute('position', new tk.PosAttr(pos, 3));
+    const mat = new PointsMaterial({ color: DRIVE_TOPIC_COLORS.airflow, size: 0.16, sizeAttenuation: true, transparent: true, opacity: 0, depthWrite: false, depthTest: false });
+    const points = new Points(geom, mat);
+    points.name = 'F1_DriveAirflow';
+    points.renderOrder = 21;
+    points.frustumCulled = false;
+    state.driveAeroGroup.add(points);
+
+    state.driveAeroAnim = { kind: 'airflow', points, count: COUNT, xs, ys, zs, spd, pha, hump, a: null, xmin: DRIVE_X_REAR, xmax: DRIVE_X_FRONT };
+  }
+
+  // Spreading wake flow-lines plus turbulent particles behind the rear wing / diffuser.
+  function buildWakeFlow(kit) {
+    const { tk, LineSegments, LineBasicMaterial, Points, PointsMaterial } = kit;
+
+    const lines = [];
+    const levels = [[0.60, -0.32], [0.60, 0.32], [0.30, -0.46], [0.30, 0.46], [0.10, -0.22], [0.10, 0.22]];
+    levels.forEach(([y, z], i) => {
+      const dir = z >= 0 ? 1 : -1;
+      const spread = dir * (0.30 + 0.10 * i);
+      lines.push(-1.70, y, z, -2.50, y + 0.03, z + spread * 0.35);
+      lines.push(-2.50, y + 0.03, z + spread * 0.35, -3.40, y + 0.10 + 0.05 * i, z + spread);
+      lines.push(-3.40, y + 0.10 + 0.05 * i, z + spread, -4.30, y + 0.18 + 0.08 * i, z + spread * 1.7);
     });
-    state.aeroGroup.add(new Mesh(geom, mat));
+    const geomL = new tk.Geom();
+    geomL.setAttribute('position', new tk.PosAttr(new Float32Array(lines), 3));
+    const matL = new LineBasicMaterial({ color: DRIVE_TOPIC_COLORS.wake, transparent: true, opacity: 0, depthWrite: false, depthTest: false });
+    const seg = new LineSegments(geomL, matL);
+    seg.name = 'F1_DriveWakeLines';
+    seg.renderOrder = 20;
+    seg.frustumCulled = false;
+    state.driveAeroGroup.add(seg);
+
+    const COUNT = 90;
+    const xs = new Float32Array(COUNT), ys = new Float32Array(COUNT), zs = new Float32Array(COUNT);
+    const spd = new Float32Array(COUNT), pha = new Float32Array(COUNT), spreadA = new Float32Array(COUNT);
+    const pos = new Float32Array(COUNT * 3);
+    for (let i = 0; i < COUNT; i++) {
+      const x0 = -1.60 - Math.random() * 0.5;
+      xs[i] = x0;
+      ys[i] = 0.05 + Math.random() * 0.55;
+      zs[i] = (Math.random() - 0.5) * 1.2;
+      spd[i] = 1.4 + Math.random() * 1.6;
+      pha[i] = Math.random() * Math.PI * 2;
+      spreadA[i] = 0.16 + Math.random() * 0.26;
+      pos[i * 3] = xs[i]; pos[i * 3 + 1] = ys[i]; pos[i * 3 + 2] = zs[i];
+    }
+    const geomP = new tk.Geom();
+    geomP.setAttribute('position', new tk.PosAttr(pos, 3));
+    const matP = new PointsMaterial({ color: DRIVE_TOPIC_COLORS.wake, size: 0.15, sizeAttenuation: true, transparent: true, opacity: 0, depthWrite: false, depthTest: false });
+    const points = new Points(geomP, matP);
+    points.name = 'F1_DriveWakeParticles';
+    points.renderOrder = 21;
+    points.frustumCulled = false;
+    state.driveAeroGroup.add(points);
+
+    state.driveAeroAnim = { kind: 'wake', points, count: COUNT, xs, ys, zs, spd, pha, a: spreadA, xmin: -4.5, xmax: -1.5 };
+  }
+
+  function buildDriveAeroVisuals(topic) {
+    const kit = getDriveKit();
+    if (!kit || !state.driveAeroGroup) return;
+    state.driveAeroAnim = null;
+
+    if (topic === 'downforce') {
+      const a = [];
+      const add = (f, t) => pushArrow(a, f, t, 0.28, 0.10, 0.022);
+      add([1.45, 0.60, -0.42], [1.45, 0.08, -0.42]);
+      add([1.45, 0.60, 0.42], [1.45, 0.08, 0.42]);
+      add([-1.60, 1.02, -0.34], [-1.60, 0.55, -0.34]);
+      add([-1.60, 1.02, 0.34], [-1.60, 0.55, 0.34]);
+      add([0.20, 0.40, -0.52], [0.20, -0.06, -0.52]);
+      add([0.20, 0.40, 0.52], [0.20, -0.06, 0.52]);
+      add([-0.60, 0.38, -0.52], [-0.60, -0.06, -0.52]);
+      add([-0.60, 0.38, 0.52], [-0.60, -0.06, 0.52]);
+      addDriveArrows(kit, a, DRIVE_TOPIC_COLORS.downforce);
+    } else if (topic === 'lift') {
+      const a = [];
+      const add = (f, t) => pushArrow(a, f, t, 0.28, 0.10, 0.022);
+      add([1.45, 0.08, -0.42], [1.45, 0.60, -0.42]);
+      add([1.45, 0.08, 0.42], [1.45, 0.60, 0.42]);
+      add([-1.60, 0.55, -0.34], [-1.60, 1.02, -0.34]);
+      add([-1.60, 0.55, 0.34], [-1.60, 1.02, 0.34]);
+      add([0.00, 0.18, -0.45], [0.00, 0.82, -0.45]);
+      add([0.00, 0.18, 0.45], [0.00, 0.82, 0.45]);
+      addDriveArrows(kit, a, DRIVE_TOPIC_COLORS.lift);
+    } else if (topic === 'drag') {
+      const a = [];
+      const add = (f, t) => pushArrow(a, f, t, 0.28, 0.10, 0.022);
+      add([0.85, 0.42, -0.42], [-1.10, 0.42, -0.42]);
+      add([0.85, 0.42, 0.42], [-1.10, 0.42, 0.42]);
+      add([0.40, 0.22, 0.00], [-1.85, 0.22, 0.00]);
+      add([0.25, 0.05, -0.26], [-1.75, 0.05, -0.26]);
+      add([0.25, 0.05, 0.26], [-1.75, 0.05, 0.26]);
+      add([-0.90, 0.82, -0.34], [-2.05, 0.82, -0.34]);
+      add([-0.90, 0.82, 0.34], [-2.05, 0.82, 0.34]);
+      addDriveArrows(kit, a, DRIVE_TOPIC_COLORS.drag);
+    } else if (topic === 'airflow') {
+      buildAirflowParticles(kit);
+    } else if (topic === 'wake') {
+      buildWakeFlow(kit);
+    }
+  }
+
+  // Per-frame motion for the particle/flow concepts; correct in the car's frame.
+  function animateDriveAeroConcept(dt) {
+    const a = state.driveAeroAnim;
+    if (!a || !a.points) return;
+    const t = state.animTime;
+    const arr = a.points.geometry.attributes.position.array;
+    const n = a.count;
+
+    for (let i = 0; i < n; i++) {
+      let x = a.xs[i] - a.spd[i] * dt;
+      if (x < a.xmin) x = a.xmax;
+      a.xs[i] = x;
+
+      let y, z;
+      if (a.kind === 'airflow') {
+        const dxn = (x - 0.20) / 0.80;
+        y = a.ys[i] + a.hump[i] * Math.exp(-dxn * dxn) + Math.sin(t * 2.2 + a.pha[i]) * 0.02;
+        z = a.zs[i] + Math.sin(t * 1.5 + a.pha[i]) * 0.03;
+      } else {
+        const spread = Math.max(0, a.xmax - x);
+        z = a.zs[i] * (1 + a.a[i] * spread) + Math.sin(t * 3.1 + a.pha[i]) * 0.10;
+        y = a.ys[i] + Math.sin(t * 2.6 + a.pha[i] * 1.7) * 0.07 - 0.015 * spread;
+      }
+      arr[i * 3] = x;
+      arr[i * 3 + 1] = y;
+      arr[i * 3 + 2] = z;
+    }
+    a.points.geometry.attributes.position.needsUpdate = true;
   }
 
   // -------------------------------------------------------------
-  // FEATURE 3: CLICKABLE COMPONENT EXPLORATION IN KIT MODE
+  // DEMO MODE: CONTINUOUS AERO FORCE ANIMATION LOOP
+  // Shows each force slowly (fade in -> hold -> fade out) then repeats.
+  // -------------------------------------------------------------
+  // Fade every material currently in the drive group (arrows or particles).
+  function applyDriveAeroOpacity(value) {
+    const group = state.driveAeroGroup;
+    if (!group) return;
+    const v = Math.max(0, Math.min(1, value));
+    group.traverse(o => {
+      if (!o.material) return;
+      const mats = Array.isArray(o.material) ? o.material : [o.material];
+      mats.forEach(m => { m.opacity = v; });
+    });
+  }
+
+  function showDriveAeroForce(topic) {
+    if (!state.driveAeroGroup) return false;
+    clearDriveAeroVisuals();
+    buildDriveAeroVisuals(topic);
+    applyDriveAeroOpacity(0);
+    return state.driveAeroGroup.children.length > 0;
+  }
+
+  function startDriveAeroLoop() {
+    if (state.aeroLoop.active) return; // never stack loops
+    const first = AERO_LOOP_SEQUENCE[0];
+    if (!showDriveAeroForce(first)) return; // renderer not ready
+
+    state.aeroLoop.active = true;
+    state.aeroLoop.idx = 0;
+    state.aeroLoop.phase = 'in';
+    state.aeroLoop.t = 0;
+
+    const aeroBtn = document.getElementById('demoAeroBtn');
+    if (aeroBtn) {
+      aeroBtn.classList.add('active');
+      aeroBtn.textContent = '[ AERO ]';
+    }
+    updateAeroOverlay(first);
+  }
+
+  function stopDriveAeroLoop() {
+    if (!state.aeroLoop.active) return;
+    state.aeroLoop.active = false;
+    state.aeroLoop.phase = 'in';
+    state.aeroLoop.t = 0;
+    clearDriveAeroVisuals();
+
+    const aeroBtn = document.getElementById('demoAeroBtn');
+    if (aeroBtn) {
+      aeroBtn.classList.remove('active');
+      aeroBtn.textContent = '[ AERO ]';
+    }
+    const aeroInfo = document.getElementById('demoAeroInfo');
+    if (aeroInfo) aeroInfo.classList.remove('visible');
+  }
+
+  function toggleDriveAeroLoop() {
+    if (state.aeroLoop.active) stopDriveAeroLoop();
+    else startDriveAeroLoop();
+  }
+
+  function updateDriveAeroLoop(dt) {
+    const loop = state.aeroLoop;
+    if (!loop.active) return;
+
+    const step = Math.min(dt, 0.05);
+    loop.t += step;
+    animateDriveAeroConcept(step);
+
+    if (loop.phase === 'in') {
+      applyDriveAeroOpacity(loop.t / AERO_LOOP_PHASE.in);
+      if (loop.t >= AERO_LOOP_PHASE.in) { loop.phase = 'hold'; loop.t = 0; }
+    } else if (loop.phase === 'hold') {
+      applyDriveAeroOpacity(1);
+      if (loop.t >= AERO_LOOP_PHASE.hold) {
+        loop.phase = 'out';
+        loop.t = 0;
+        const aeroInfo = document.getElementById('demoAeroInfo');
+        if (aeroInfo) aeroInfo.classList.remove('visible');
+      }
+    } else { // 'out'
+      applyDriveAeroOpacity(1 - loop.t / AERO_LOOP_PHASE.out);
+      if (loop.t >= AERO_LOOP_PHASE.out) {
+        loop.idx = (loop.idx + 1) % AERO_LOOP_SEQUENCE.length;
+        loop.phase = 'in';
+        loop.t = 0;
+        showDriveAeroForce(AERO_LOOP_SEQUENCE[loop.idx]);
+        updateAeroOverlay(AERO_LOOP_SEQUENCE[loop.idx]);
+      }
+    }
+  }
+
+  // 1. Downforce: Crisp downward force indicators & wing accents
+  function buildDownforceVisuals(tk, LineSegments, LineBasicMaterial) {
+    const lines = [];
+
+    // Adds a vertical downward force vector with subtle arrow tick barbs
+    function addDownwardVector(x, y, zTop, zBottom) {
+      lines.push(x, y, zTop, x, y, zBottom);
+      const barb = 0.035;
+      lines.push(x, y, zBottom, x - barb, y, zBottom + barb * 1.5);
+      lines.push(x, y, zBottom, x + barb, y, zBottom + barb * 1.5);
+      lines.push(x, y, zBottom, x, y - barb, zBottom + barb * 1.5);
+      lines.push(x, y, zBottom, x, y + barb, zBottom + barb * 1.5);
+    }
+
+    // Front Wing Downward Vectors (at front wing tips)
+    addDownwardVector(1.45, -0.44, 0.22, 0.02);
+    addDownwardVector(1.45, 0.44, 0.22, 0.02);
+
+    // Rear Wing Downward Vectors (at rear wing plane)
+    addDownwardVector(-1.58, -0.42, 0.70, 0.40);
+    addDownwardVector(-1.58, 0.42, 0.70, 0.40);
+
+    // Underfloor Ground-Effect Suction Indicators (under sidepods)
+    addDownwardVector(0.2, -0.36, 0.10, -0.01);
+    addDownwardVector(0.2, 0.36, 0.10, -0.01);
+    addDownwardVector(-0.5, -0.36, 0.10, -0.01);
+    addDownwardVector(-0.5, 0.36, 0.10, -0.01);
+
+    // Subtle Surface Accents on Front & Rear Wing Leading Edges
+    lines.push(1.46, -0.62, 0.18, 1.46, 0.62, 0.18);
+    lines.push(-1.58, -0.52, 0.68, -1.58, 0.52, 0.68);
+
+    const geom = new tk.Geom();
+    geom.setAttribute('position', new tk.PosAttr(new Float32Array(lines), 3));
+    const mat = new LineBasicMaterial({
+      color: 0x00f0ff,
+      transparent: true,
+      opacity: 0.85,
+      depthWrite: false
+    });
+    state.aeroGroup.add(new LineSegments(geom, mat));
+  }
+
+  // 2. Drag & Wake: Continuous thin streamlines along bodywork and delicate trailing wake
+  function buildDragWakeVisuals(tk, LineSegments, LineBasicMaterial) {
+    const streamLines = [];
+
+    function addStreamline(pts) {
+      for (let i = 0; i < pts.length - 1; i++) {
+        streamLines.push(pts[i][0], pts[i][1], pts[i][2], pts[i+1][0], pts[i+1][1], pts[i+1][2]);
+      }
+    }
+
+    // Over-body streamlines arriving from +X travelling rearward to -X
+    // Centerline / Roll-hoop streamline
+    addStreamline([
+      [2.2, 0, 0.35], [1.6, 0, 0.32], [1.0, 0, 0.42], [0.3, 0, 0.60],
+      [-0.4, 0, 0.62], [-1.1, 0, 0.60], [-1.55, 0, 0.70], [-2.3, 0, 0.72]
+    ]);
+
+    // Left and Right Sidepod waist streamlines
+    [-0.42, 0.42].forEach(y => {
+      addStreamline([
+        [2.2, y, 0.20], [1.5, y, 0.18], [0.8, y * 0.95, 0.24], [0.0, y * 0.82, 0.26],
+        [-0.7, y * 0.75, 0.24], [-1.4, y * 0.92, 0.30], [-2.3, y * 1.05, 0.32]
+      ]);
+    });
+
+    // Front wheel outwash streamlines
+    [-0.68, 0.68].forEach(y => {
+      addStreamline([
+        [2.2, y, 0.18], [1.5, y * 1.15, 0.20], [0.8, y * 1.25, 0.22],
+        [0.0, y * 1.20, 0.22], [-1.0, y * 1.12, 0.22], [-2.0, y * 1.08, 0.22]
+      ]);
+    });
+
+    // Trailing turbulent wake strictly behind the rear wing & diffuser (-X < -1.6)
+    // 6 delicate, restrained wake streamlines (no polygonal shards!)
+    const wakeLines = [];
+    const wakeLevels = [
+      { y: -0.42, z: 0.68 }, { y: 0.42, z: 0.68 },
+      { y: -0.18, z: 0.68 }, { y: 0.18, z: 0.68 },
+      { y: -0.32, z: 0.16 }, { y: 0.32, z: 0.16 }
+    ];
+
+    wakeLevels.forEach((wl, idx) => {
+      const spread = 0.08 * (idx % 2 === 0 ? 1 : -1);
+      const startX = -1.62;
+      const midX = -2.1;
+      const endX = -2.7;
+      wakeLines.push(
+        startX, wl.y, wl.z,
+        midX, wl.y + spread * 0.4, wl.z + 0.02,
+        midX, wl.y + spread * 0.4, wl.z + 0.02,
+        endX, wl.y + spread, wl.z + 0.04
+      );
+    });
+
+    // Body streamlines: laser-thin aero cyan
+    const geomStream = new tk.Geom();
+    geomStream.setAttribute('position', new tk.PosAttr(new Float32Array(streamLines), 3));
+    const matStream = new LineBasicMaterial({
+      color: 0x00f0ff,
+      transparent: true,
+      opacity: 0.72,
+      depthWrite: false
+    });
+    state.aeroGroup.add(new LineSegments(geomStream, matStream));
+
+    // Trailing wake: restrained technical warm amber
+    const geomWake = new tk.Geom();
+    geomWake.setAttribute('position', new tk.PosAttr(new Float32Array(wakeLines), 3));
+    const matWake = new LineBasicMaterial({
+      color: 0xff8833,
+      transparent: true,
+      opacity: 0.55,
+      depthWrite: false
+    });
+    const wakeMesh = new LineSegments(geomWake, matWake);
+    wakeMesh.name = 'F1_TrailingWakeSegments';
+    state.aeroGroup.add(wakeMesh);
+  }
+
+  // 3. Ground Effect: Venturi streamlines and isobars strictly beneath the floor
+  function buildGroundEffectVisuals(tk, LineSegments, LineBasicMaterial) {
+    const lines = [];
+
+    function addStreamline(pts) {
+      for (let i = 0; i < pts.length - 1; i++) {
+        lines.push(pts[i][0], pts[i][1], pts[i][2], pts[i+1][0], pts[i+1][1], pts[i+1][2]);
+      }
+    }
+
+    // 4 Venturi tunnel streamlines passing beneath the floor
+    [-0.28, 0.28].forEach(y => {
+      addStreamline([
+        [1.15, y, 0.07], [0.5, y * 0.95, 0.04], [0.0, y * 0.95, 0.04],
+        [-0.5, y * 0.98, 0.04], [-1.0, y * 1.05, 0.08], [-1.45, y * 1.15, 0.18]
+      ]);
+    });
+
+    // Outer floor edge streamlines
+    [-0.44, 0.44].forEach(y => {
+      addStreamline([
+        [1.0, y, 0.06], [0.2, y * 0.98, 0.04], [-0.4, y * 0.98, 0.04],
+        [-0.9, y * 1.02, 0.05], [-1.35, y * 1.05, 0.14]
+      ]);
+    });
+
+    // Transverse negative pressure isobars beneath the floor
+    const isobars = [0.5, 0.1, -0.3, -0.7];
+    isobars.forEach(x => {
+      lines.push(x, -0.42, 0.04, x, 0.42, 0.04);
+    });
+
+    // Diffuser exit expansion lines
+    lines.push(-1.45, -0.42, 0.18, -1.45, 0.42, 0.18);
+
+    const geom = new tk.Geom();
+    geom.setAttribute('position', new tk.PosAttr(new Float32Array(lines), 3));
+    const mat = new LineBasicMaterial({
+      color: 0x00ff88,
+      transparent: true,
+      opacity: 0.75,
+      depthWrite: false
+    });
+    state.aeroGroup.add(new LineSegments(geom, mat));
+  }
+
+  // 4. Aero Balance: Axle vectors, longitudinal datum, and Center of Pressure crosshair
+  function buildAeroBalanceVisuals(tk, LineSegments, LineBasicMaterial) {
+    const lines = [];
+
+    // Front axle downward vector
+    const xF = 1.35;
+    lines.push(xF, 0, 0.30, xF, 0, 0.05);
+    lines.push(xF, 0, 0.05, xF - 0.04, 0, 0.09);
+    lines.push(xF, 0, 0.05, xF + 0.04, 0, 0.09);
+    // Front axle width bar
+    lines.push(xF, -0.55, 0.12, xF, 0.55, 0.12);
+
+    // Rear axle downward vector
+    const xR = -1.35;
+    lines.push(xR, 0, 0.55, xR, 0, 0.28);
+    lines.push(xR, 0, 0.28, xR - 0.04, 0, 0.32);
+    lines.push(xR, 0, 0.28, xR + 0.04, 0, 0.32);
+    // Rear axle width bar
+    lines.push(xR, -0.58, 0.16, xR, 0.58, 0.16);
+
+    // Longitudinal balance datum line connecting axles along floor
+    lines.push(xF, 0, 0.05, xR, 0, 0.05);
+
+    // Center of Pressure marker cross at x = 0.12 (43% front / 57% rear)
+    const xCoP = 0.12;
+    lines.push(xCoP, -0.12, 0.05, xCoP, 0.12, 0.05);
+    lines.push(xCoP - 0.08, 0, 0.05, xCoP + 0.08, 0, 0.05);
+
+    const geom = new tk.Geom();
+    geom.setAttribute('position', new tk.PosAttr(new Float32Array(lines), 3));
+    const mat = new LineBasicMaterial({
+      color: 0x00f0ff,
+      transparent: true,
+      opacity: 0.85,
+      depthWrite: false
+    });
+    state.aeroGroup.add(new LineSegments(geom, mat));
+  }
+
+  // -------------------------------------------------------------
+  // FEATURE 4: CLICKABLE COMPONENT EXPLORATION IN KIT MODE
   // -------------------------------------------------------------
   function setupKitInteraction() {
-    const { canvas } = state.engine;
+    const { canvas } = state.engine || {};
     if (!canvas) return;
 
     canvas.addEventListener('pointerdown', e => {
       state.pointerDownPos = { x: e.clientX, y: e.clientY };
+      state.pointerType = e.pointerType || 'mouse';
       state.isDragging = false;
     });
 
     canvas.addEventListener('pointermove', e => {
       const dx = Math.abs(e.clientX - state.pointerDownPos.x);
       const dy = Math.abs(e.clientY - state.pointerDownPos.y);
-      if (dx > 5 || dy > 5) {
+      // Touch taps wobble more than mouse clicks, so allow a wider tolerance.
+      const threshold = state.pointerType === 'touch' ? 12 : 5;
+      if (dx > threshold || dy > threshold) {
         state.isDragging = true;
       }
     });
@@ -1115,61 +1094,75 @@
       if (state.currentMode !== 'kit') return;
       onKitRaycastPick(e);
     });
+
+    canvas.addEventListener('pointercancel', () => { state.isDragging = true; });
   }
 
+  // Screen-space proximity pick against every part's exploded (kit) anchor.
+  // Parts that share a location (tyre / rim / brake on a wheel) are all kept as
+  // candidates and cycled through on repeated taps so each one is reachable.
   function onKitRaycastPick(e) {
-    const { canvas, camera, car, assembly } = state.engine;
+    const { canvas, camera, car, assembly } = state.engine || {};
     if (!canvas || !camera || !car || !assembly) return;
+
+    const partsList = assembly.partsList || [];
+    if (partsList.length === 0) return;
 
     const rect = canvas.getBoundingClientRect();
     const mouseX = ((e.clientX - rect.left) / rect.width) * 2 - 1;
     const mouseY = -((e.clientY - rect.top) / rect.height) * 2 + 1;
 
-    const partsList = assembly.partsList || [];
-    if (partsList.length === 0) return;
-
     const tmpVec = new car.container.position.constructor();
-    let selectedPart = null;
-    let minDist = 0.16; // Screen pick radius
+    const candidates = [];
+    const PICK_RADIUS = 0.19; // generous NDC radius so small parts stay easy to hit
 
     for (const part of partsList) {
       if (!part.kitLoc) continue;
+      const comp = resolveComponent(part.name);
+      if (!comp) continue;
+
       tmpVec.copy(part.kitLoc);
       tmpVec.applyMatrix4(car.container.matrixWorld);
       tmpVec.project(camera);
 
       const dist = Math.hypot(tmpVec.x - mouseX, tmpVec.y - mouseY);
-      if (dist < minDist) {
-        minDist = dist;
-        selectedPart = part;
+      if (dist <= PICK_RADIUS) {
+        candidates.push({ part, comp, dist, depth: tmpVec.z });
       }
     }
 
-    if (selectedPart) {
-      const comp = resolveComponent(selectedPart.name);
-      if (comp) {
-        selectKitComponent(comp.key, selectedPart.name);
-      }
-    } else {
+    if (candidates.length === 0) {
+      state.pickAnchor = null;
+      state.pickCandidates = [];
+      state.pickIndex = 0;
       deselectKitComponent();
+      return;
     }
+
+    // Nearest anchor first; on a near-tie prefer the part nearer the camera
+    // (so the visible, outer component wins rather than one hidden inside it).
+    candidates.sort((a, b) => (a.dist - b.dist) || (a.depth - b.depth));
+
+    const anchor = state.pickAnchor;
+    const sameSpot = anchor && Math.hypot(anchor.x - e.clientX, anchor.y - e.clientY) < 16;
+    if (sameSpot && state.pickCandidates.length === candidates.length) {
+      state.pickIndex = (state.pickIndex + 1) % candidates.length;
+    } else {
+      state.pickIndex = 0;
+    }
+    state.pickAnchor = { x: e.clientX, y: e.clientY };
+    state.pickCandidates = candidates;
+
+    const chosen = candidates[state.pickIndex];
+    selectKitComponent(chosen.comp.key, chosen.part.name);
   }
 
-  function selectKitComponent(compKey, partName) {
+  function selectKitComponent(compKey) {
     state.selectedComponentKey = compKey;
     const comp = COMPONENT_DB[compKey];
     if (!comp) return;
 
-    console.log('[Kit Component Clicked]:', comp.name);
-
-    // Update Chips
-    document.querySelectorAll('.f1-kit-chip').forEach(chip => {
-      const active = chip.dataset.comp === compKey;
-      chip.classList.toggle('active', active);
-    });
-
-    // 3D Visual Marker on Part
-    highlightKitPart(partName || comp.matchKeys[0]);
+    console.log('[Kit Component Selected]:', comp.name);
 
     // Show Structured 6-Field Panel
     updateComponentPanel(compKey);
@@ -1177,59 +1170,8 @@
 
   function deselectKitComponent() {
     state.selectedComponentKey = null;
-    clearKitHighlights();
-    document.querySelectorAll('.f1-kit-chip').forEach(c => c.classList.remove('active'));
     const panel = document.getElementById('demoKitCompPanel');
     if (panel) panel.classList.remove('visible');
-  }
-
-  function clearKitHighlights() {
-    if (!state.kitHighlightGroup) return;
-    while (state.kitHighlightGroup.children.length > 0) {
-      const obj = state.kitHighlightGroup.children[0];
-      if (obj.geometry) obj.geometry.dispose();
-      if (obj.material) obj.material.dispose();
-      state.kitHighlightGroup.remove(obj);
-    }
-  }
-
-  function highlightKitPart(partName) {
-    clearKitHighlights();
-    const { assembly, car } = state.engine;
-    if (!assembly || !car) return;
-
-    const part = assembly.partsByName?.[partName];
-    if (!part || !part.kitLoc) return;
-
-    const submesh = car.mesh?.children?.[0];
-    if (!submesh) return;
-
-    const Geom = submesh.geometry.constructor;
-    const Mesh = submesh.constructor;
-    const Mat = submesh.material.constructor;
-
-    const pos = new car.container.position.constructor();
-    pos.copy(part.kitLoc);
-    pos.applyMatrix4(car.container.matrixWorld);
-
-    // Create precision 3D highlight marker bracket
-    const geom = new Geom();
-    const r = 0.28;
-    const markerVerts = [
-      pos.x - r, pos.y, pos.z, pos.x + r, pos.y, pos.z,
-      pos.x, pos.y - r, pos.z, pos.x, pos.y + r, pos.z,
-      pos.x, pos.y, pos.z - r, pos.x, pos.y, pos.z + r
-    ];
-    geom.setAttribute('position', new submesh.geometry.attributes.position.constructor(new Float32Array(markerVerts), 3));
-    const mat = new Mat({
-      color: 0x00f0ff,
-      emissive: 0x00f0ff,
-      emissiveIntensity: 2.0,
-      transparent: true,
-      opacity: 0.95
-    });
-
-    state.kitHighlightGroup.add(new Mesh(geom, mat));
   }
 
   function updateComponentPanel(compKey) {
@@ -1239,12 +1181,10 @@
     const panel = document.getElementById('demoKitCompPanel');
     if (!panel) return;
 
-    const specificNote = comp.carSpecific?.[state.activeCar] || '';
-
     panel.classList.add('visible');
     panel.innerHTML = `
       <div class="f1-panel-header">
-        <span class="f1-panel-tag">[ ${comp.category.toUpperCase()} // ${state.activeCar.toUpperCase()} ]</span>
+        <span class="f1-panel-tag">[ ${comp.category ? comp.category.toUpperCase() : 'COMPONENT'} ]</span>
         <button class="f1-panel-close" id="closeKitPanelBtn" aria-label="Close Component Reference">&times;</button>
       </div>
       <h3 class="f1-panel-title">${comp.name}</h3>
@@ -1273,13 +1213,6 @@
         <span class="f1-field-label">ENGINEERING TRADE-OFF:</span>
         <p class="f1-field-text">${comp.tradeoff}</p>
       </div>
-
-      ${specificNote ? `
-        <div class="f1-panel-metrics" style="margin-top: 8px;">
-          <span class="f1-metric-label">ACTIVE CONFIGURATION SPECIFICATION:</span>
-          <span class="f1-metric-val highlight-cyan">${specificNote}</span>
-        </div>
-      ` : ''}
     `;
 
     document.getElementById('closeKitPanelBtn')?.addEventListener('click', deselectKitComponent);
@@ -1292,10 +1225,20 @@
     if (state.currentMode === 'studio') {
       clearAeroVisuals();
       restoreCarMaterials();
-      const aeroPanel = document.getElementById('demoAeroPanel');
-      if (aeroPanel) aeroPanel.classList.remove('visible');
+      const aeroInfo = document.getElementById('demoAeroInfo');
+      if (aeroInfo) aeroInfo.classList.remove('visible');
+      const aeroDropdown = document.getElementById('demoAeroDropdown');
+      if (aeroDropdown) aeroDropdown.classList.remove('open');
     } else if (state.currentMode === 'kit') {
       deselectKitComponent();
+    } else if (state.currentMode === 'assembled') {
+      if (state.aeroLoop.active) stopDriveAeroLoop();
+      clearDriveAeroVisuals();
+      restoreCarMaterials();
+      const aeroInfo = document.getElementById('demoAeroInfo');
+      if (aeroInfo) aeroInfo.classList.remove('visible');
+      const aeroDropdown = document.getElementById('demoAeroDropdown');
+      if (aeroDropdown) aeroDropdown.classList.remove('open');
     }
   }
 
@@ -1305,35 +1248,47 @@
   }
 
   function updateModeVisibility(mode) {
-    const aeroPicker = document.getElementById('demoAeroPicker');
-    const aeroPanel = document.getElementById('demoAeroPanel');
-    const aeroSpeed = document.getElementById('demoAeroSpeed');
-    const kitChips = document.getElementById('demoKitChips');
+    const aeroControl = document.getElementById('demoAeroControl');
+    const aeroInfo = document.getElementById('demoAeroInfo');
+    const aeroDropdown = document.getElementById('demoAeroDropdown');
     const kitPanel = document.getElementById('demoKitCompPanel');
 
-    if (mode === 'studio') {
-      if (aeroPicker) aeroPicker.classList.add('visible');
-      if (kitChips) kitChips.classList.remove('visible');
+    if (mode === 'assembled') {
+      // Demo (Drive) mode: the AERO button drives a looping force visualization.
+      if (state.aeroLoop.active) stopDriveAeroLoop();
+      if (state.activeAero !== 'none') setAeroTopic('none');
+      if (aeroControl) aeroControl.classList.add('visible');
       if (kitPanel) kitPanel.classList.remove('visible');
+      if (aeroDropdown) aeroDropdown.classList.remove('open');
+      if (aeroInfo) aeroInfo.classList.remove('visible');
+      clearAeroVisuals();
+      clearDriveAeroVisuals();
+      restoreCarMaterials();
+      const aeroBtn = document.getElementById('demoAeroBtn');
+      if (aeroBtn) { aeroBtn.textContent = '[ AERO ]'; aeroBtn.classList.remove('active'); }
+    } else if (mode === 'studio') {
+      // Studio keeps the selectable topic dropdown.
+      if (aeroDropdown) aeroDropdown.classList.remove('open');
+      renderAeroMenu(STUDIO_TOPICS);
+      if (aeroControl) aeroControl.classList.add('visible');
+      if (kitPanel) kitPanel.classList.remove('visible');
+
       if (state.activeAero !== 'none') {
-        if (aeroPanel) aeroPanel.classList.add('visible');
-        if (aeroSpeed) aeroSpeed.classList.add('visible');
+        updateAeroOverlay(state.activeAero);
         buildAeroVisuals(state.activeAero);
+      } else {
+        if (aeroInfo) aeroInfo.classList.remove('visible');
+        clearAeroVisuals();
+        clearDriveAeroVisuals();
+        restoreCarMaterials();
       }
     } else if (mode === 'kit') {
-      if (aeroPicker) aeroPicker.classList.remove('visible');
-      if (aeroPanel) aeroPanel.classList.remove('visible');
-      if (aeroSpeed) aeroSpeed.classList.remove('visible');
-      if (kitChips) kitChips.classList.add('visible');
+      if (aeroControl) aeroControl.classList.remove('visible');
+      if (aeroInfo) aeroInfo.classList.remove('visible');
+      if (aeroDropdown) aeroDropdown.classList.remove('open');
       clearAeroVisuals();
-    } else {
-      // assembled (drive)
-      if (aeroPicker) aeroPicker.classList.remove('visible');
-      if (aeroPanel) aeroPanel.classList.remove('visible');
-      if (aeroSpeed) aeroSpeed.classList.remove('visible');
-      if (kitChips) kitChips.classList.remove('visible');
-      if (kitPanel) kitPanel.classList.remove('visible');
-      clearAeroVisuals();
+      clearDriveAeroVisuals();
+      // Kit mode reveals no educational content until the user selects a part.
       deselectKitComponent();
     }
   }
@@ -1341,11 +1296,14 @@
   function onRenderUpdate(dt) {
     state.animTime += dt;
     if (state.currentMode === 'studio' && state.activeAero === 'drag' && state.aeroGroup) {
-      state.aeroGroup.children.forEach(ch => {
-        if (ch.material && ch.material.opacity) {
-          ch.position.x = Math.sin(state.animTime * 8) * 0.03;
-        }
-      });
+      const wake = state.aeroGroup.getObjectByName('F1_TrailingWakeSegments');
+      if (wake) {
+        // Subtle, smooth pulsation along -X to simulate dynamic wake dissipation
+        wake.position.x = Math.sin(state.animTime * 3) * 0.02;
+      }
+    }
+    if (state.aeroLoop.active) {
+      updateDriveAeroLoop(dt);
     }
   }
 
@@ -1353,48 +1311,69 @@
   // DOM EVENT HANDLERS SETUP
   // -------------------------------------------------------------
   function setupUIEventHandlers() {
+    // Guard against double-binding (bootstrap + initEnhancements both call this),
+    // which would make toggle buttons fire twice and never appear to work.
+    if (state.uiBound) return;
+    state.uiBound = true;
+
     // Mode Buttons Listeners
     document.querySelectorAll('.demoFormulaModePicker-btn').forEach(btn => {
       btn.addEventListener('click', () => {
-        onModeWillChange(btn.dataset.mode);
-        onModeDidChange(btn.dataset.mode);
-      });
-    });
-
-    // Car Selector
-    document.querySelectorAll('.demoCarPicker-btn').forEach(btn => {
-      btn.addEventListener('click', () => {
-        applyCarStructuralConfiguration(btn.dataset.car);
-      });
-    });
-
-    // Aero Topic Selector
-    document.querySelectorAll('.demoAeroPicker-btn').forEach(btn => {
-      btn.addEventListener('click', () => {
-        setAeroTopic(btn.dataset.concept);
-      });
-    });
-
-    // Airspeed Selector
-    document.querySelectorAll('.demoAeroSpeed-btn').forEach(btn => {
-      btn.addEventListener('click', () => {
-        state.airspeed = parseInt(btn.dataset.speed, 10);
-        document.querySelectorAll('.demoAeroSpeed-btn').forEach(b => {
-          b.classList.toggle('active', parseInt(b.dataset.speed, 10) === state.airspeed);
-        });
-        if (state.activeAero !== 'none') {
-          updateAeroPanel(state.activeAero);
-          buildAeroVisuals(state.activeAero);
+        const targetMode = btn.dataset.mode;
+        if (state.engine?.modeManager?.goTo) {
+          state.engine.modeManager.goTo(targetMode);
+        } else {
+          onModeWillChange(targetMode);
+          onModeDidChange(targetMode);
         }
       });
     });
 
-    // Kit Component Chips
-    document.querySelectorAll('.f1-kit-chip').forEach(chip => {
-      chip.addEventListener('click', () => {
-        selectKitComponent(chip.dataset.comp);
-      });
+    // Single Compact AERO button toggle
+    const aeroBtn = document.getElementById('demoAeroBtn');
+    const aeroDropdown = document.getElementById('demoAeroDropdown');
+
+    aeroBtn?.addEventListener('click', e => {
+      e.stopPropagation();
+      // In Demo (Drive) mode the AERO button toggles the looping force animation.
+      if (state.currentMode === 'assembled') {
+        toggleDriveAeroLoop();
+        return;
+      }
+      aeroDropdown?.classList.toggle('open');
+      const isOpen = aeroDropdown?.classList.contains('open');
+      aeroBtn.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
     });
+
+    // Close dropdown on click outside
+    document.addEventListener('click', e => {
+      if (!e.target.closest('#demoAeroControl')) {
+        aeroDropdown?.classList.remove('open');
+        aeroBtn?.setAttribute('aria-expanded', 'false');
+      }
+    });
+
+    // Dropdown options are (re)built per mode by renderAeroMenu().
+    // Seed the Studio set so the control works before the first mode change.
+    renderAeroMenu(STUDIO_TOPICS);
+
+    // Close Compact Aero Info Overlay button
+    document.getElementById('closeAeroInfoBtn')?.addEventListener('click', () => {
+      setAeroTopic('none');
+    });
+
+    // Toggle Details inside Compact Aero Info
+    document.getElementById('toggleAeroDetailsBtn')?.addEventListener('click', () => {
+      const details = document.getElementById('demoAeroDetails');
+      const moreBtn = document.getElementById('toggleAeroDetailsBtn');
+      if (!details || !moreBtn) return;
+      const isHidden = details.style.display === 'none';
+      details.style.display = isHidden ? 'block' : 'none';
+      moreBtn.textContent = isHidden ? '[- LESS]' : '[+ MORE]';
+    });
+
+    // Close button for pre-rendered Kit panel
+    document.getElementById('closeKitPanelBtn')?.addEventListener('click', deselectKitComponent);
   }
 
   // Immediately setup UI event handlers if DOM is ready
